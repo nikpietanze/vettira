@@ -8,7 +8,6 @@ import VettiraCore
 // age is always visible, a stale quote is said to be stale (older than the 60-second tolerance),
 // and a warning is a possible reversal, not a confirmed one (AGENTS.md).
 
-private let tolerance: TimeInterval = 60
 
 // MARK: Formatting
 
@@ -42,7 +41,7 @@ private func status(
 ) -> MenuBarStatus {
     var settings = UserSettings()
     settings.watchlist = list
-    return MenuBarStatus(settings: settings, snapshot: snapshot, staleTolerance: tolerance, now: now)
+    return MenuBarStatus(settings: settings, snapshot: snapshot, now: now)
 }
 
 @Test func anEmptyWatchlistShowsNoSymbol() {
@@ -134,12 +133,18 @@ private func status(
     #expect(shown.indicator == .closed)
 }
 
-// MARK: The popover's rows
+// MARK: The popover's and the dashboard's rows
+
+private func rowSettings(_ list: Watchlist) -> UserSettings {
+    var settings = UserSettings()
+    settings.watchlist = list
+    return settings
+}
 
 @Test func rowsListPinnedSymbolsFirstAndMarkTheMenuBars() {
     let list = displayWatchlist(["SPY", "QQQ", "DIA"], disabled: ["DIA"], pinned: ["QQQ"])
     let rows = SymbolRow.rows(
-        watchlist: list, snapshot: displaySnapshot([spy(100.3)]), staleTolerance: tolerance, now: nyTime("10:00:20"),
+        settings: rowSettings(list), snapshot: displaySnapshot([spy(100.3)]), now: nyTime("10:00:20"),
         timeZone: newYork)
     #expect(rows.map(\.symbol.rawValue) == ["QQQ", "SPY", "DIA"])
     #expect(rows.map(\.isInMenuBar) == [false, true, false])
@@ -149,8 +154,7 @@ private func status(
 
 @Test func aRowShowsThePriceTheHighItsKindThePullbackAndTheDataAge() {
     let row = SymbolRow.rows(
-        watchlist: displayWatchlist(["SPY"]), snapshot: displaySnapshot([spy(100.2, alert: earlyWarning())]),
-        staleTolerance: tolerance, now: nyTime("10:00:20"), timeZone: newYork)[0]
+        settings: rowSettings(displayWatchlist(["SPY"])), snapshot: displaySnapshot([spy(100.2, alert: earlyWarning())]), now: nyTime("10:00:20"), timeZone: newYork)[0]
     #expect(row.price == "100.20")
     #expect(row.high == "100.50 observed high")
     #expect(row.changeFromHigh == "\u{2212}0.30%")
@@ -162,9 +166,8 @@ private func status(
 
 @Test func aSessionHighIsLabelledAsOne() {
     let row = SymbolRow.rows(
-        watchlist: displayWatchlist(["SPY"]),
-        snapshot: displaySnapshot([spy(100.2, high: SessionHigh(price: 101, kind: .session))]),
-        staleTolerance: tolerance, now: nyTime("10:00:20"), timeZone: newYork)[0]
+        settings: rowSettings(displayWatchlist(["SPY"])),
+        snapshot: displaySnapshot([spy(100.2, high: SessionHigh(price: 101, kind: .session))]), now: nyTime("10:00:20"), timeZone: newYork)[0]
     #expect(row.high == "101.00 session high")
 }
 
@@ -179,7 +182,7 @@ func aRowSaysWhyItsDataCantAlert(rejection: QuoteRejection, stale: Bool, expecte
     var state = spy(100.2, stale: stale)
     state.lastRejection = rejection
     let row = SymbolRow.rows(
-        watchlist: displayWatchlist(["SPY"]), snapshot: displaySnapshot([state]), staleTolerance: tolerance,
+        settings: rowSettings(displayWatchlist(["SPY"])), snapshot: displaySnapshot([state]),
         now: nyTime("10:00:20"), timeZone: newYork)[0]
     #expect(row.status == expected)
 }
@@ -188,11 +191,47 @@ func aRowSaysWhyItsDataCantAlert(rejection: QuoteRejection, stale: Bool, expecte
     var unknown = SymbolSnapshot(symbol: displayTicker("QQQ"))
     unknown.problem = .unknownSymbol
     let rows = SymbolRow.rows(
-        watchlist: displayWatchlist(["SPY", "QQQ"]),
-        snapshot: displaySnapshot([SymbolSnapshot(symbol: displayTicker("SPY")), unknown]), staleTolerance: tolerance,
+        settings: rowSettings(displayWatchlist(["SPY", "QQQ"])),
+        snapshot: displaySnapshot([SymbolSnapshot(symbol: displayTicker("SPY")), unknown]),
         now: nyTime("10:00:20"), timeZone: newYork)
     #expect(rows.map(\.status) == ["waiting", "unknown symbol"])
     #expect(rows.allSatisfy { $0.price == nil && $0.dataAge == nil && $0.isStale })
+}
+
+@Test func aRowShowsItsQuoteTimeAndThresholdsForTheDashboard() throws {
+    var list = displayWatchlist(["SPY", "QQQ"], pinned: ["QQQ"])
+    try list.setThresholds(PullbackThresholds(early: 0.5, strong: 1), for: displayTicker("QQQ"))
+    var settings = rowSettings(list)
+    settings.defaultThresholds = try PullbackThresholds(early: 0.3, strong: 0.6)
+    let rows = SymbolRow.rows(
+        settings: settings, snapshot: displaySnapshot([spy(100.2)]), now: nyTime("10:00:20"), timeZone: newYork)
+    #expect(rows.map(\.symbol.rawValue) == ["QQQ", "SPY"])
+    #expect(rows.map(\.isPinned) == [true, false])
+    #expect(rows.map(\.thresholds) == ["0.50% / 1.00%", "0.30% / 0.60%"])
+    #expect(rows.map(\.hasOwnThresholds) == [true, false])
+    #expect(rows.map(\.quoteTime) == [nil, "10:00:15 EST"])
+}
+
+@Test func aRowIsStalePastTheSettingsTolerance() throws {
+    // The quote is 5 s old.
+    var settings = rowSettings(displayWatchlist(["SPY"]))
+    let fresh = SymbolRow.rows(settings: settings, snapshot: displaySnapshot([spy(100.2)]), now: nyTime("10:00:20"))
+    #expect(fresh[0].isStale == false)
+    try settings.setStaleTolerance(4)
+    let stale = SymbolRow.rows(settings: settings, snapshot: displaySnapshot([spy(100.2)]), now: nyTime("10:00:20"))
+    #expect(stale[0].isStale)
+    #expect(stale[0].status == "stale")
+}
+
+@Test(arguments: [("", true), ("sp", true), (" Y ", true), ("SPY", true), ("QQQ", false), ("SPYY", false)])
+func aSearchFindsRowsWhoseTickerHasIt(query: String, found: Bool) {
+    let row = SymbolRow.rows(settings: rowSettings(displayWatchlist(["SPY"])), snapshot: displaySnapshot([]),
+                             now: nyTime("10:00:20"))[0]
+    #expect(row.matches(query) == found)
+}
+
+@Test func thresholdsReadEarlyThenStronger() {
+    #expect(DisplayFormat.thresholds(.standard) == "0.25% / 0.40%")
 }
 
 // MARK: Connection health

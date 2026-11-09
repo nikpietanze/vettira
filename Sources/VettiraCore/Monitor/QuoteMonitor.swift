@@ -26,7 +26,6 @@ public actor QuoteMonitor {
     private let calendar: MarketCalendar
     private let clock: MonitorClock
     private var settings: UserSettings
-    private var monitorSettings: MonitorSettings
     private var engine: ReversalAlertEngine
     /// The trading day of each symbol's high, so a high is shown only during its own session.
     private var highDays: [TickerSymbol: TradingDay] = [:]
@@ -35,13 +34,12 @@ public actor QuoteMonitor {
     /// The latest state, the same as the last one `snapshots` published.
     public private(set) var snapshot: MonitorSnapshot
 
-    /// A monitor for `settings`' watchlist that hasn't polled yet. `engineState` is the alert
-    /// engine's saved state, so alerts it already sent aren't sent again.
+    /// A monitor for `settings`' watchlist, at its update interval and with its alert settings,
+    /// that hasn't polled yet. `engineState` is the alert engine's saved state, so alerts it
+    /// already sent aren't sent again.
     public init(
         provider: any MarketDataProvider,
         settings: UserSettings,
-        monitorSettings: MonitorSettings = .standard,
-        alertSettings: AlertSettings = .standard,
         engineState: ReversalAlertEngine.State = .init(),
         calendar: MarketCalendar = .usEquities,
         clock: MonitorClock = .system
@@ -52,8 +50,7 @@ public actor QuoteMonitor {
         self.calendar = calendar
         self.clock = clock
         self.settings = settings
-        self.monitorSettings = monitorSettings
-        engine = ReversalAlertEngine(settings: alertSettings, state: engineState, calendar: calendar)
+        engine = ReversalAlertEngine(settings: settings.alertSettings, state: engineState, calendar: calendar)
         let waiting = settings.watchlist.entries.filter(\.isEnabled).map { ($0.symbol, SymbolSnapshot(symbol: $0.symbol)) }
         snapshot = MonitorSnapshot(
             symbols: Dictionary(uniqueKeysWithValues: waiting), diagnostics: MonitorDiagnostics(source: provider.name))
@@ -85,21 +82,12 @@ public actor QuoteMonitor {
         }
     }
 
-    /// A new watchlist or thresholds. A newly enabled symbol is polled from the next poll.
+    /// New settings: a newly enabled symbol is polled from the next poll, new thresholds and a
+    /// new staleness tolerance apply from the next quote (and the tolerance to this snapshot), and
+    /// a new update interval from the wait after the next poll.
     public func update(settings: UserSettings) {
         self.settings = settings
-        refresh(at: clock.now())
-        snapshotSink.yield(snapshot)
-    }
-
-    /// A new update interval, from the wait after the next poll.
-    public func update(monitorSettings: MonitorSettings) {
-        self.monitorSettings = monitorSettings
-    }
-
-    /// New rearm, cooldown, staleness and spike settings, from the next quote.
-    public func update(alertSettings: AlertSettings) {
-        engine.settings = alertSettings
+        engine.settings = settings.alertSettings
         refresh(at: clock.now())
         snapshotSink.yield(snapshot)
     }
@@ -148,9 +136,9 @@ public actor QuoteMonitor {
     /// After a failure, at least the backoff (the interval doubled for each failure in a row, up to
     /// the longest backoff) and at least what a rate limit asked for.
     private func delay(afterPollStartedAt started: Date, now: Date, failure: ProviderError?) -> TimeInterval {
-        let interval = monitorSettings.interval
+        let interval = settings.monitorSettings.interval
         let status = calendar.status(at: now)
-        var delay = monitorSettings.closedInterval
+        var delay = settings.monitorSettings.closedInterval
         if let status, status.state == .regular {
             // At least as long as the poll took, so a long watchlist leaves the provider idle
             // at least half the time instead of polling back to back.
@@ -161,7 +149,7 @@ public actor QuoteMonitor {
         }
         guard let failure else { return delay }
         let failures = snapshot.diagnostics.consecutiveFailures
-        let backoff = min(interval * pow(2, Double(min(failures, 30))), monitorSettings.longestBackoff)
+        let backoff = min(interval * pow(2, Double(min(failures, 30))), settings.monitorSettings.longestBackoff)
         delay = max(delay, backoff)
         if case .rateLimited(let retryAfter?) = failure {
             delay = max(delay, retryAfter)

@@ -244,25 +244,43 @@ import VettiraCore
 
     // MARK: Test Connection
 
-    @Test func testConnectionAsksForSPYAndPassesWhenItComes() async throws {
-        let (yahoo, http) = provider([Yahoo.chart("SPY", YahooFixtures.spy)])
-        try await yahoo.testConnection()
+    @Test func testConnectionAsksForTheSymbolOnceAndReturnsItsQuote() async throws {
+        let (yahoo, http) = provider([Yahoo.chart("QQQ", YahooFixtures.spy)])
+        let quote = try await yahoo.testConnection(symbol: "QQQ")
+        #expect(quote.price == 752.68)
+        #expect(quote.timestamp == YahooFixtures.quoteTime)
         #expect(await http.requests.count == 1)
     }
 
     @Test func testConnectionFailsWithTheProvidersError() async {
         let (yahoo, _) = provider([Yahoo.chart("SPY", "Forbidden", status: 403)])
-        await #expect(throws: ProviderError.blocked) { try await yahoo.testConnection() }
+        await #expect(throws: ProviderError.blocked) { try await yahoo.testConnection(symbol: "SPY") }
     }
 
     @Test func testConnectionFailsWhenTheQuoteHasNoUsableData() async {
         let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spy(without: "regularMarketPrice"))])
-        await #expect(throws: ProviderError.noUsableQuote(["SPY"])) { try await yahoo.testConnection() }
+        await #expect(throws: ProviderError.noUsableQuote(["SPY"])) { try await yahoo.testConnection(symbol: "SPY") }
     }
 
-    @Test func testConnectionFailsWhenSPYIsUnknown() async {
-        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.unknownSymbol, status: 404)])
-        await #expect(throws: ProviderError.malformedResponse(detail: "no quote for SPY")) { try await yahoo.testConnection() }
+    @Test func testConnectionFailsWhenTheSymbolIsUnknown() async {
+        let (yahoo, _) = provider([Yahoo.chart("VETTIRAZZ", YahooFixtures.unknownSymbol, status: 404)])
+        await #expect(throws: ProviderError.unknownSymbols(["VETTIRAZZ"])) {
+            try await yahoo.testConnection(symbol: "VETTIRAZZ")
+        }
+    }
+
+    @Test func testConnectionDuringAPollWaitsItsTurnAndThePacing() async throws {
+        // The same symbol throughout, since which request goes first is up to the scheduler.
+        let clock = PacingClock()
+        let (yahoo, http) = provider((0..<3).map { _ in Yahoo.chart("SPY", YahooFixtures.spy) }, clock: clock)
+        async let poll = yahoo.quotes(for: ["SPY"])
+        async let test = yahoo.testConnection(symbol: "SPY")
+        async let nextPoll = yahoo.quotes(for: ["SPY"])
+        _ = try await (poll, test, nextPoll)
+        #expect(await http.mostInFlight == 1)
+        #expect(await http.requests.count == 3)
+        // Each request a second after the last.
+        #expect(clock.sleeps == [.seconds(1), .seconds(1)])
     }
 
     // MARK: What it is

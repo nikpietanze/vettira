@@ -50,12 +50,26 @@ public struct Watchlist: Equatable, Sendable {
     }
 
     /// Moves the entries at `source` to before `destination`, as SwiftUI's `onMove` reports a
-    /// drag: offsets into `entries`, `destination` from 0 to `entries.count`.
+    /// drag: offsets into `displayOrder`, `destination` from 0 to `entries.count`. Pinned symbols
+    /// still list first, so a pinned one dropped among the others lands last of the pinned, and
+    /// the other way round.
     public mutating func move(fromOffsets source: IndexSet, toOffset destination: Int) {
-        let moving = source.map { entries[$0] }
-        let remaining = entries.indices.filter { !source.contains($0) }.map { entries[$0] }
+        let order = displayOrder
+        let moving = source.map { order[$0] }
+        let remaining = order.indices.filter { !source.contains($0) }.map { order[$0] }
         let insertAt = destination - source.filter { $0 < destination }.count
-        entries = Array(remaining[..<insertAt]) + moving + remaining[insertAt...]
+        let moved = Array(remaining[..<insertAt]) + moving + remaining[insertAt...]
+        entries = moved.filter(\.isPinned) + moved.filter { !$0.isPinned }
+    }
+
+    /// Moves the symbol `steps` places down the list as it's displayed (up when negative),
+    /// staying among the pinned symbols or among the others.
+    public mutating func move(_ symbol: TickerSymbol, by steps: Int) throws(WatchlistError) {
+        let order = displayOrder
+        guard let from = order.firstIndex(where: { $0.symbol == symbol }) else { throw .notInList(symbol) }
+        let group = order.indices.filter { order[$0].isPinned == order[from].isPinned }
+        let to = min(max(from + steps, group.first ?? from), group.last ?? from)
+        move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
     }
 
     public mutating func setPinned(_ pinned: Bool, for symbol: TickerSymbol) throws(WatchlistError) {

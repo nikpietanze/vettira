@@ -32,12 +32,11 @@ public struct MenuBarStatus: Equatable, Sendable {
     /// A sentence saying the same in full, for the tooltip and VoiceOver.
     public let detail: String
 
-    /// The status at `now`. `staleTolerance` is the alert engine's: a quote older than it is
-    /// stale.
+    /// The status at `now`. A quote older than the settings' staleness tolerance is stale.
     public init(
-        settings: UserSettings, snapshot: MonitorSnapshot, staleTolerance: TimeInterval, now: Date,
-        calendar: MarketCalendar = .usEquities
+        settings: UserSettings, snapshot: MonitorSnapshot, now: Date, calendar: MarketCalendar = .usEquities
     ) {
+        let staleTolerance = settings.alertSettings.staleTolerance
         guard let symbol = settings.watchlist.menuBarSymbol else {
             self.init(nil, "", .empty, "The watchlist is empty, so there's no symbol to show.")
             return

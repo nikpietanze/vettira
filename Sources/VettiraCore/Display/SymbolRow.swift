@@ -10,14 +10,22 @@ public struct SymbolRow: Equatable, Sendable, Identifiable {
     public let isEnabled: Bool
     /// Whether it's the symbol the menu bar shows.
     public let isInMenuBar: Bool
+    /// Whether it's pinned, so it lists first.
+    public let isPinned: Bool
     /// The latest price: `512.30`.
     public let price: String?
     /// The change from the high: `−0.31%`.
     public let changeFromHigh: String?
     /// The high and its kind: `513.90 observed high`. Only during the high's own session.
     public let high: String?
+    /// The quote's own time: `10:31:05 EST`.
+    public let quoteTime: String?
     /// How old the quote is: `5 s`.
     public let dataAge: String?
+    /// The thresholds that apply to it, early then stronger: `0.25% / 0.40%`.
+    public let thresholds: String
+    /// Whether those are its own thresholds rather than the defaults.
+    public let hasOwnThresholds: Bool
     /// Why the data can't alert, when it can't: `off`, `waiting`, `unknown symbol`,
     /// `market closed`, `stale` and the like.
     public let status: String?
@@ -26,28 +34,42 @@ public struct SymbolRow: Equatable, Sendable, Identifiable {
     /// The last warning this session: `Early warning at 10:31:05 EST`.
     public let lastWarning: String?
 
-    /// A row for each symbol on the watchlist, in its display order (pinned first), at `now`.
+    /// A row for each symbol on the watchlist, in its display order (pinned first), at `now`. A
+    /// quote older than the settings' staleness tolerance is stale.
     public static func rows(
-        watchlist: Watchlist, snapshot: MonitorSnapshot, staleTolerance: TimeInterval, now: Date,
+        settings: UserSettings, snapshot: MonitorSnapshot, now: Date,
         timeZone: TimeZone = .current, calendar: MarketCalendar = .usEquities
     ) -> [SymbolRow] {
-        watchlist.displayOrder.map { entry in
+        let watchlist = settings.watchlist
+        return watchlist.displayOrder.map { entry in
             SymbolRow(
                 entry: entry, state: entry.isEnabled ? snapshot.symbols[entry.symbol] : nil,
-                isInMenuBar: watchlist.menuBarSymbol == entry.symbol, staleTolerance: staleTolerance, now: now,
-                timeZone: timeZone, calendar: calendar)
+                isInMenuBar: watchlist.menuBarSymbol == entry.symbol,
+                thresholds: entry.thresholds ?? settings.defaultThresholds,
+                staleTolerance: settings.alertSettings.staleTolerance, now: now, timeZone: timeZone, calendar: calendar)
         }
     }
 
+    /// Whether the row is one a search for `query` finds: its ticker contains the query, ignoring
+    /// case and surrounding spaces. An empty query finds every row.
+    public func matches(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return query.isEmpty || symbol.rawValue.contains(query)
+    }
+
     private init(
-        entry: WatchlistEntry, state: SymbolSnapshot?, isInMenuBar: Bool, staleTolerance: TimeInterval, now: Date,
-        timeZone: TimeZone, calendar: MarketCalendar
+        entry: WatchlistEntry, state: SymbolSnapshot?, isInMenuBar: Bool, thresholds: PullbackThresholds,
+        staleTolerance: TimeInterval, now: Date, timeZone: TimeZone, calendar: MarketCalendar
     ) {
         symbol = entry.symbol
         isEnabled = entry.isEnabled
         self.isInMenuBar = isInMenuBar
+        isPinned = entry.isPinned
+        self.thresholds = DisplayFormat.thresholds(thresholds)
+        hasOwnThresholds = entry.thresholds != nil
         let quote = state?.quote
         price = quote.map { DisplayFormat.price($0.price) }
+        quoteTime = quote.map { DisplayFormat.time($0.timestamp, in: timeZone) }
         dataAge = quote.map { DisplayFormat.duration($0.age(at: now)) }
         if let high = state?.high {
             self.high = "\(DisplayFormat.price(high.price)) \(high.kind.label)"

@@ -21,7 +21,7 @@ flowchart LR
 |---|---|---|
 | `VettiraCore` | `Sources/VettiraCore/` | The logic: quotes and the market-data provider protocol (`Providers/`), the market session and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), the quote monitor that polls and publishes (`Monitor/`), what the menu bar and its popover show (`Display/`), notifications' wording and delivery (`Notifications/`), local storage (`Storage/`), a Debug run's launch arguments (`LaunchOptions`) |
 | `VettiraCoreTests` | `Tests/VettiraCoreTests/` | Its tests, on recorded and mock quotes |
-| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): an `NSStatusItem` with an `NSPopover`, and a dashboard window, each hosting SwiftUI views. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, menu bar only (`LSUIElement`), so it has no Dock icon |
+| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): an `NSStatusItem` with an `NSPopover`, a dashboard window and a Settings window, each hosting SwiftUI views. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, a menu-bar app (`LSUIElement`): it shows in the Dock only while one of its windows is open |
 
 The Xcode project is generated, never committed: `cd App && xcodegen`, then open
 `App/Vettira.xcodeproj`.
@@ -30,9 +30,17 @@ The Xcode project is generated, never committed: `cd App && xcodegen`, then open
 
 The menu-bar item is the app: it runs until the user picks **Quit**. `MenuBarController`
 (`App/Vettira/MenuBarController.swift`) puts it in the menu bar as an `NSStatusItem` whose button
-toggles a transient `NSPopover`, and the popover's **Open Dashboard** opens the dashboard window;
-both host SwiftUI views (`NSHostingController`). Closing the popover or the dashboard leaves the
-menu-bar item, and monitoring, running.
+toggles a transient `NSPopover`, and the popover's **Open Dashboard** opens the dashboard window
+and its **Settings…** the Settings window (as do the dashboard's **Settings…** and the app menu's,
+Cmd-,); each hosts SwiftUI views (`NSHostingController`). Closing the popover or a window leaves
+the menu-bar item, and monitoring, running.
+
+**The Dock.** Vettira is a menu-bar app, so it has no Dock icon, except while one of its windows
+is open: then it shows in the Dock and the app switcher (`NSApp.setActivationPolicy(.regular)`),
+so the window can be found like any app's, and has its app menu. When the last one closes it
+goes back to the menu bar only (`.accessory`); a minimized window still counts as open.
+`DockPresence` (`VettiraCore`, `Display/`) keeps which windows are open and says when that
+changes, and `MenuBarController`, each window's delegate, applies it.
 
 Why AppKit rather than SwiftUI's `MenuBarExtra`: a window-style `MenuBarExtra` (the kind that
 shows a popover rather than a menu) opens only on a real mouse event, so neither accessibility
@@ -48,15 +56,26 @@ flowchart LR
     center["UNUserNotificationCenter"]
     controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus"]
     popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows, ConnectionHealth"]
-    dashboard["<b>DashboardView</b><br/>in a window:<br/>SymbolRows, ConnectionHealth"]
+    dashboard["<b>DashboardView</b><br/>in a window: the watchlist's table<br/>and its edits, ConnectionHealth,<br/>DiagnosticsSummary"]
+    settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection"]
+    store["<b>SettingsStore</b>"]
+    provider["<b>MarketDataProvider</b>"]
     monitor -- snapshots --> state
     monitor -- alerts --> state
     state --> delivery --> center
     state --> controller
     controller -- click --> popover
     popover -- Open Dashboard --> dashboard
+    popover -- Settings… --> settingsView
     state --> popover
     state --> dashboard
+    state --> settingsView
+    dashboard -- edits --> state
+    settingsView -- edits --> state
+    state -- each edit --> store
+    state -- each edit --> monitor
+    state -- Test Connection --> provider
+    monitor -- polls --> provider
 ```
 
 **The app's state.** `AppState` (`App/Vettira/AppState.swift`) is `@Observable`, on the main
@@ -65,8 +84,8 @@ not by a view. At launch it loads the settings
 (`SettingsStore.applicationSupport()`), starts the `QuoteMonitor` on Yahoo Finance's provider,
 and reads both of its streams for as long as the app runs: each snapshot replaces the last, and
 each alert goes to `AlertDelivery`. The menu bar (which redraws as the state it reads changes),
-the popover and the dashboard only read it,
-so opening or closing a window changes nothing, and reopening the dashboard shows the same state.
+the popover, the dashboard and Settings read it, and change the settings only through its
+methods, so opening or closing a window changes nothing, and reopening one shows the same state.
 It also moves its own clock every 5 seconds, so the menu bar turns stale on time between polls,
 and the popover and dashboard redraw every second while they're open, so data ages count up.
 
@@ -76,8 +95,12 @@ tested without a UI:
 | Type | What it is |
 |---|---|
 | `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls |
-| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, high and whether it's the session or the observed high, change from the high, data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), and the last warning this session. Clicking one shows it in the menu bar |
+| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
 | `ConnectionHealth` | Waiting, connected, outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
+| `DiagnosticsSummary` | The dashboard's diagnostics, label and value: the source, the update interval in and outside regular hours, the staleness tolerance, when quotes last came, the last and next update, the last error and how many updates in a row have failed |
+| `ConnectionTestReport` | What Settings' Test Connection found: the quote with its time, age and source; that it's stale, in regular hours; the last session's price, while the market is closed; or the provider error's message and next step. `run(on:symbol:…)` asks the provider |
+| `SettingsChoices` | The update intervals (10 s to 1 h) and staleness tolerances Settings offers, the saved value always among them, and a warning when the tolerance is shorter than the interval, so quotes would turn stale between updates |
+| `DockPresence` | Which windows are open, so whether Vettira shows in the Dock |
 
 The menu-bar item's accessibility label (its description) is always "Vettira", whatever it
 shows, so VoiceOver names it and UI scripts can find it, and its accessibility value is the status
@@ -100,7 +123,27 @@ warning and its threshold, and the quote's own time and age:
 
 Banners show even while Vettira's popover or dashboard is open (`NotificationPresenter`).
 
-**Launch at Login** is a switch in the popover, off until the user turns it on. It registers the
+**The dashboard** (`DashboardView`) is the watchlist as a table, a `SymbolRow` a row, with the
+controls to edit it: add a symbol (checked as a `TickerSymbol`, saying why when it isn't one, or
+is already on the list), search, reorder (drag a row while the list isn't filtered, or its up and
+down arrows; pinned symbols stay first), pin, switch a symbol on or off, give it its own
+thresholds or put it back on the defaults, pick the menu bar's symbol, and remove it. Under the
+table are the connection's health and its diagnostics.
+
+**Settings** (`SettingsView`) has the update interval and the staleness tolerance, the default
+thresholds, where quotes come from with Yahoo's terms, **Test Connection**, and the alert sound
+and Launch at Login switches. Thresholds are typed as percents and checked together
+(`PullbackThresholds(early:strong:)` from text), saying why when they're refused. Test Connection
+asks the monitor's own provider for one quote for the menu-bar symbol (SPY while the watchlist is
+empty), so its request waits behind any of the monitor's and keeps to the same pacing; it's
+user-triggered, one at a time, and in a demo run asks the demo provider.
+
+**Every edit**, in the dashboard, Settings or the popover, goes through `AppState`: it's made on a
+copy of the settings, which is saved whole straight away and handed to the monitor
+(`update(settings:)`), so it applies from the next poll and survives a relaunch. An edit the
+settings' types refuse changes nothing.
+
+**Launch at Login** is a switch in the popover and in Settings, off until the user turns it on. It registers the
 app with `SMAppService.mainApp`; when macOS wants the user to approve it, the popover says so and
 opens Login Items.
 
@@ -110,9 +153,11 @@ opens Login Items.
 ([providers.md](providers.md#the-demo-provider)) on a clock moved into regular hours, and
 `--settings-dir <path>` (`VETTIRA_SETTINGS_DIR`), for a settings file somewhere other than
 Application Support, so the app can be run and checked without calling Yahoo or touching the
-user's settings. Either one makes the run a check, whose alerts go only to the log
+user's settings. Either one makes the run a check (`isCheck`), whose alerts go only to the log
 (`LogNotificationCenter`, each notification's full text) and which never asks for notification
-permission, unless it's also launched with `--notify` (`VETTIRA_NOTIFY=1`). Release builds ignore
+permission, unless it's also launched with `--notify` (`VETTIRA_NOTIFY=1`). A check also neither
+reads nor saves its windows' frames (`remembersWindowFrames`): they live in the app's defaults,
+which the user's own Vettira shares, so a check's windows open at their first size each launch. Release builds ignore
 them all.
 
 ## Storage
@@ -121,7 +166,7 @@ What the user sets up stays on their Mac, in one file, as [PRIVACY.md](../PRIVAC
 
 ```mermaid
 flowchart LR
-    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>notification sound"]
+    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound"]
     store["<b>SettingsStore</b><br/>JSON, written whole"]
     settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
 ```
@@ -129,13 +174,15 @@ flowchart LR
 `UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
 `PullbackThresholds`; `SettingsStore` saves it as JSON in
 `~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save. It
-also holds whether notifications play a sound.
+also holds whether notifications play a sound, the update interval (`MonitorSettings`, saved as
+`updateInterval` in seconds) and the alert engine's settings, of which only the staleness
+tolerance is the user's and saved (`staleTolerance`, in seconds; the rest are the standard ones).
 Input is checked where it comes in, into types that can't hold a bad value: a `TickerSymbol` is
 trimmed, uppercased, 1 to 15 of `A-Z 0-9 . - ^ =`; thresholds are each between 0 and 100
 percent, early below strong; the watchlist has each symbol once, and its menu-bar symbol is on
-it. Decoding goes through the same checks, so a file that breaks them is corrupt: the store moves
+it; the update interval is from 10 seconds to an hour, and the staleness tolerance more than 0. Decoding goes through the same checks, so a file that breaks them is corrupt: the store moves
 it to `settings.corrupt.json` and starts from the defaults (an empty watchlist, 0.25% and
-0.40%). A field an older file lacks gets its default, so a new setting is added with
+0.40%, a 15-second interval and a 60-second tolerance). A field an older file lacks gets its default, so a new setting is added with
 `decodeIfPresent` and a default.
 
 ## The pipeline
@@ -174,8 +221,7 @@ rejects a quote that isn't fresh, in order and in regular hours, keeps the sessi
 high, and fires each threshold once per high-water-mark cycle, with a `Codable` state the app can
 save. [alerts.md](alerts.md) describes the session rules, the years the calendar covers, and when
 alerts fire. The monitor is built too ([below](#polling)), and so are the app's menu bar,
-popover and notifications ([above](#the-app)); the dashboard's full table and settings are still
-to come.
+popover, notifications, dashboard and Settings ([above](#the-app)).
 
 An alert is a possible, unconfirmed reversal, never advice or an instruction to sell, and its
 thresholds are illustrative. The spec is [spec.md](spec.md).
@@ -208,8 +254,9 @@ sequenceDiagram
 
 **How often.** One poll at a time: `run()` does nothing if it's already running, and the provider
 sends a poll's requests one after another, at least a second apart. The next poll waits for the
-update interval (`MonitorSettings.interval`, 15 seconds by default, from 10 seconds to an hour)
-from the start of the last one, so with one symbol it's one request every 15 seconds. The wait is
+update interval (`MonitorSettings.interval`, set in Settings: 15 seconds by default, from 10
+seconds to an hour) from the start of the last one, so with one symbol it's one request every 15
+seconds. The wait is
 never shorter than the poll took, so Vettira is idle at least half the time: a 20-symbol
 watchlist, which takes about 20 seconds at one request a second, waits 20 seconds after each poll
 rather than polling back to back.
@@ -242,17 +289,18 @@ poll finished and when quotes last came back, the wait before the next poll and 
 the last error with its message and next step, and how many polls in a row have failed.
 
 **Stale data.** A symbol is stale when it has no quote yet, its quote is older than the staleness
-tolerance (`AlertSettings.staleTolerance`, 60 seconds by default), or the provider says it's
+tolerance (`AlertSettings.staleTolerance`, 60 seconds by default, set in Settings), or the provider says it's
 delayed by more. The engine fires nothing on a stale quote ([alerts.md](alerts.md)), so price
 alerts are suspended until fresh data comes, and the app shows the symbol as stale. When the
 provider stops answering, each snapshot's data age keeps growing until the symbol turns stale.
 Outside regular hours a symbol's latest quote is the last session's, so it turns stale once that
 quote is older than the tolerance: by default, a minute after the close.
 
-**Settings and saved state.** `update(settings:)` takes a new watchlist or thresholds: a symbol
-added or enabled is listed straight away and polled from the next poll, and one removed or
-disabled is dropped. `update(monitorSettings:)` and `update(alertSettings:)` take a new interval
-and new alert settings. The engine's state is `engineState`, `Codable`, and `init` takes it back,
+**Settings and saved state.** The monitor takes its update interval and alert settings from the
+`UserSettings` it's given, and `update(settings:)` takes new ones: a symbol added or enabled is
+listed straight away and polled from the next poll, and one removed or disabled is dropped; new
+thresholds and a new staleness tolerance apply from the next quote (the tolerance to the snapshot
+it publishes at once), and a new interval from the wait after the next poll. The engine's state is `engineState`, `Codable`, and `init` takes it back,
 so the app can save it and a relaunch doesn't alert again for a pullback it already alerted.
 
 Its tests (`Tests/VettiraCoreTests/Monitor/`) drive it with a fake provider and a clock that only

@@ -22,6 +22,23 @@ func aCheckRunOnlyLogsItsNotifications(arguments: [String]) {
     #expect(LaunchOptions.parse(arguments).notifications == .log)
 }
 
+@Test(arguments: [
+    ["Vettira", "--demo"],
+    ["Vettira", "--settings-dir", "/tmp/check"],
+    ["Vettira", "--demo", "--settings-dir", "/tmp/check", "--notify"],
+])
+func aCheckRunLeavesTheUsersWindowFramesAlone(arguments: [String]) {
+    let options = LaunchOptions.parse(arguments)
+    #expect(options.isCheck)
+    #expect(!options.remembersWindowFrames)
+}
+
+@Test func aPlainLaunchRemembersWhereItsWindowsWere() {
+    let options = LaunchOptions.parse(["Vettira"])
+    #expect(!options.isCheck)
+    #expect(options.remembersWindowFrames)
+}
+
 @Test func notifyMakesACheckRunPostRealNotifications() {
     #expect(LaunchOptions.parse(["Vettira", "--demo", "--settings-dir", "/tmp/check", "--notify"]).notifications == .system)
 }

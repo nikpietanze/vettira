@@ -43,6 +43,11 @@ One request per symbol in the watchlist, each time it updates:
 - **Nothing about you** beyond what any web request carries, like your IP address: no key, no
   cookie, no account. Vettira keeps nothing from the responses but the quotes.
 - It reads no web pages, follows no consent forms, and downloads no history.
+- **Test Connection**, in Settings, is the one request you trigger yourself: one quote for the
+  menu-bar symbol (SPY while the watchlist is empty), sent in turn with the updates' requests and
+  at the same pace, never alongside one. It says what came back: the quote with its time and age;
+  that it's stale (older than the staleness tolerance in regular hours); the last session's price
+  while the market is closed; or the error below, each with its own message and what to do.
 
 If Yahoo rate-limits a request (HTTP 429), refuses it (HTTP 403), redirects it to a consent page,
 or is down, the update stops there, since the remaining symbols would fail the same way. A symbol
@@ -83,7 +88,7 @@ A `MarketDataProvider` has:
 | `name` | The provider's name, shown as each quote's source: "Yahoo Finance (unofficial)" |
 | `streams` | Whether it pushes quotes as they change; when it doesn't, Vettira polls. Yahoo's doesn't |
 | `quotes(for:)` | The latest quotes for many symbols, in as few requests as the provider allows (Yahoo's: one per symbol, paced). Symbols it doesn't know come back in the batch's `unknownSymbols`, and symbols it returned without a usable price or time (a halted or newly listed symbol, say) in its `unusableSymbols`; the rest of the batch still comes. Only a response that can't be read at all fails the batch |
-| `testConnection()` | Checks the provider answers with a quote (for SPY), for Test Connection in Settings |
+| `testConnection(symbol:)` | One quote for one symbol, for Test Connection in Settings: by default one `quotes(for:)` call, so it goes through the same requests and pacing as a poll, waits behind any poll's request in flight, and counts against the one-request-a-second limit. It returns the quote, or throws why there's none: the provider's error, `unknownSymbols` or `noUsableQuote` for the symbol, or `malformedResponse` when nothing came back for it |
 
 Providers reach the network only through `HTTPClient`, so their tests answer with recorded
 responses and never call the provider.
@@ -110,7 +115,7 @@ response.
 | `rateLimited` | Too many requests in a short time (HTTP 429), with how long to wait when the provider says so in whole seconds (`Retry-After`, capped at a day; anything else is no wait given); the update stops there | Wait; if it keeps happening, lengthen the update interval |
 | `blocked` | The provider refused the request (HTTP 403), or redirected it to a consent page | Try later; some networks and regions are blocked, and Vettira can't accept a consent page for you |
 | `unknownSymbols` | The provider doesn't recognize these symbols | Check the spelling and use the provider's ticker |
-| `noUsableQuote` | The provider returned these symbols with no usable price or quote time. In a batch they're listed in `unusableSymbols`; Test Connection throws it | The symbol may be halted or newly listed; check again later |
+| `noUsableQuote` | The provider returned these symbols with no usable price or quote time. In a batch they're listed in `unusableSymbols`; Test Connection throws it, and `unknownSymbols` for a symbol the provider doesn't know | The symbol may be halted or newly listed; check again later |
 | `malformedResponse` | The response couldn't be read: not the expected JSON, or an unexpected status | Try later; if it persists, the provider may have changed its responses, so report it |
 | `unavailable` | No network, or the provider had a server error (HTTP 5xx) | Check the connection; otherwise try later |
 
@@ -129,5 +134,7 @@ so with the default thresholds the sixth poll is 0.30% below it (an early warnin
 0.45% (a stronger warning), and nothing alerts after that. Each quote is timestamped at the
 monitor's clock, in the regular session, with no session high. The app moves the monitor's clock
 into the regular session (`DemoProvider.regularHoursOffset`), to 30 minutes after the open of
-the session the moment belongs to, so the demo alerts at any time of day, and polls every 10
-seconds.
+the session the moment belongs to, so the demo alerts at any time of day. It polls at the update
+interval in the settings, so at 10 seconds the early warning comes about a minute after launch.
+Its Test Connection returns the symbol's quote at its current step without moving it on, so
+testing doesn't change when the warnings come.

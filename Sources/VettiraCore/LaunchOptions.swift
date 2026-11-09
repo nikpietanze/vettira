@@ -45,11 +45,19 @@ public struct LaunchOptions: Equatable, Sendable {
         return options
     }
 
-    /// Where alerts go. A demo or scratch run is a check, so it only logs them, never reaching the
-    /// screen or asking for permission, unless it was launched with `--notify`.
+    /// Whether the run is a check: a demo or scratch run, which leaves the user's own setup alone.
+    public var isCheck: Bool { demo || settingsDirectory != nil }
+
+    /// Where alerts go. A check only logs them, never reaching the screen or asking for
+    /// permission, unless it was launched with `--notify`.
     public var notifications: NotificationOutput {
-        (demo || settingsDirectory != nil) && !notify ? .log : .system
+        isCheck && !notify ? .log : .system
     }
+
+    /// Whether windows open where they were last left and save where they're left. A check
+    /// neither reads nor saves them, since the frames live in the app's defaults, which the
+    /// user's own Vettira shares; its windows open at their first size each launch.
+    public var remembersWindowFrames: Bool { !isCheck }
 }
 
 /// Where alert notifications go.

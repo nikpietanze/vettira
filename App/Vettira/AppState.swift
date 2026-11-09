@@ -25,7 +25,8 @@ final class AppState {
     private(set) var notificationProblem: String?
     private(set) var launchAtLogin: LaunchAtLogin = .off
     private(set) var launchAtLoginProblem: String?
-    let staleTolerance = AlertSettings.standard.staleTolerance
+    /// Settings' Test Connection: not run yet, running, or what it found.
+    private(set) var connectionTest: ConnectionTest = .notRun
 
     enum LaunchAtLogin {
         case off, on
@@ -33,8 +34,16 @@ final class AppState {
         case needsApproval
     }
 
+    enum ConnectionTest: Equatable {
+        case notRun, running
+        case done(ConnectionTestReport)
+    }
+
     @ObservationIgnored private var store: SettingsStore?
     @ObservationIgnored private let monitor: QuoteMonitor
+    /// The monitor's provider: Test Connection asks it too, so its request waits its turn behind
+    /// the monitor's and keeps to the same pacing.
+    @ObservationIgnored private let provider: any MarketDataProvider
     @ObservationIgnored private let center: any AlertNotificationCenter
     @ObservationIgnored private let delivery: AlertDelivery
     /// Set as the system notification center's delegate when alerts go there.
@@ -65,19 +74,18 @@ final class AppState {
 
         let provider: any MarketDataProvider
         let clock: MonitorClock
-        var monitorSettings = MonitorSettings.standard
         if options.demo {
             let offset = DemoProvider.regularHoursOffset(at: Date())
             clock = MonitorClock(now: { Date() + offset }, sleep: MonitorClock.system.sleep)
             provider = DemoProvider(now: clock.now)
-            monitorSettings = (try? MonitorSettings(interval: MonitorSettings.shortestInterval)) ?? .standard
             clockOffset = offset
         } else {
             clock = .system
             provider = YahooFinanceProvider()
             clockOffset = 0
         }
-        monitor = QuoteMonitor(provider: provider, settings: settings, monitorSettings: monitorSettings, clock: clock)
+        self.provider = provider
+        monitor = QuoteMonitor(provider: provider, settings: settings, clock: clock)
         switch options.notifications {
         case .system:
             center = UserNotificationCenter()
@@ -101,23 +109,108 @@ final class AppState {
     // MARK: What the views show
 
     var menuBar: MenuBarStatus {
-        MenuBarStatus(settings: settings, snapshot: snapshot, staleTolerance: staleTolerance, now: now)
+        MenuBarStatus(settings: settings, snapshot: snapshot, now: now)
     }
 
     /// The watchlist's rows at the Mac's time `date`, for a view that redraws every second.
     func rows(at date: Date) -> [SymbolRow] {
-        SymbolRow.rows(
-            watchlist: settings.watchlist, snapshot: snapshot, staleTolerance: staleTolerance, now: date + clockOffset)
+        SymbolRow.rows(settings: settings, snapshot: snapshot, now: date + clockOffset)
     }
 
     func health(at date: Date) -> ConnectionHealth {
         ConnectionHealth(diagnostics: snapshot.diagnostics, now: date + clockOffset)
     }
 
+    func diagnostics(at date: Date) -> DiagnosticsSummary {
+        DiagnosticsSummary(diagnostics: snapshot.diagnostics, settings: settings, now: date + clockOffset)
+    }
+
+    /// The symbol Test Connection asks for: the menu bar's, or SPY while the watchlist is empty.
+    var connectionTestSymbol: TickerSymbol {
+        settings.watchlist.menuBarSymbol ?? (try? TickerSymbol("SPY"))!
+    }
+
     // MARK: What the user changes
+
+    // Each change is saved straight away and handed to the monitor. Those that can be refused
+    // return why, for the view to show.
+
+    /// Adds what the user typed, checked as a ticker. Returns why it can't, when it can't.
+    func addSymbol(_ text: String) -> String? {
+        do {
+            let symbol = try TickerSymbol(text)
+            return change { try $0.watchlist.add(symbol) }
+        } catch {
+            return error.errorDescription
+        }
+    }
+
+    func remove(_ symbol: TickerSymbol) {
+        change { try $0.watchlist.remove(symbol) }
+    }
+
+    /// Moves the dragged symbols to before the row at `offset` in the watchlist as it's listed.
+    func move(_ symbols: [TickerSymbol], toOffset offset: Int) {
+        let order = settings.watchlist.displayOrder.map(\.symbol)
+        let source = IndexSet(symbols.compactMap { order.firstIndex(of: $0) })
+        guard !source.isEmpty else { return }
+        change { $0.watchlist.move(fromOffsets: source, toOffset: min(offset, order.count)) }
+    }
+
+    /// Moves the symbol one place up (`-1`) or down (`1`) the list.
+    func move(_ symbol: TickerSymbol, by steps: Int) {
+        change { try $0.watchlist.move(symbol, by: steps) }
+    }
+
+    func setPinned(_ pinned: Bool, for symbol: TickerSymbol) {
+        change { try $0.watchlist.setPinned(pinned, for: symbol) }
+    }
+
+    func setEnabled(_ enabled: Bool, for symbol: TickerSymbol) {
+        change { try $0.watchlist.setEnabled(enabled, for: symbol) }
+    }
 
     func showInMenuBar(_ symbol: TickerSymbol) {
         change { try $0.watchlist.showInMenuBar(symbol) }
+    }
+
+    /// Gives the symbol its own thresholds, from what the user typed. Returns why it can't.
+    func setThresholds(early: String, strong: String, for symbol: TickerSymbol) -> String? {
+        change { try $0.watchlist.setThresholds(PullbackThresholds(early: early, strong: strong), for: symbol) }
+    }
+
+    /// Puts the symbol back on the default thresholds.
+    func useDefaultThresholds(for symbol: TickerSymbol) {
+        change { try $0.watchlist.setThresholds(nil, for: symbol) }
+    }
+
+    /// Sets the default thresholds from what the user typed. Returns why it can't.
+    func setDefaultThresholds(early: String, strong: String) -> String? {
+        change { $0.defaultThresholds = try PullbackThresholds(early: early, strong: strong) }
+    }
+
+    func setUpdateInterval(_ seconds: TimeInterval) {
+        change { $0.monitorSettings = try MonitorSettings(interval: seconds) }
+    }
+
+    func setStaleTolerance(_ seconds: TimeInterval) {
+        change { try $0.setStaleTolerance(seconds) }
+    }
+
+    /// Asks the provider for one quote for `connectionTestSymbol`, once at a time, and keeps what
+    /// it found. The request waits behind any of the monitor's, at the provider's pacing.
+    func testConnection() {
+        guard connectionTest != .running else { return }
+        connectionTest = .running
+        let symbol = connectionTestSymbol
+        let tolerance = settings.alertSettings.staleTolerance
+        let offset = clockOffset
+        Task { [provider] in
+            let report = await ConnectionTestReport.run(
+                on: provider, symbol: symbol, staleTolerance: tolerance, now: { Date() + offset })
+            connectionTest = .done(report)
+            log.notice("Test Connection for \(symbol, privacy: .public): \(report.headline, privacy: .public)")
+        }
     }
 
     func setNotificationSound(_ on: Bool) {
@@ -163,14 +256,17 @@ final class AppState {
         SMAppService.openSystemSettingsLoginItems()
     }
 
-    private func change(_ edit: (inout UserSettings) throws -> Void) {
+    /// Makes the edit, saves it and hands it to the monitor; or returns why the edit was refused,
+    /// changing nothing.
+    @discardableResult
+    private func change(_ edit: (inout UserSettings) throws -> Void) -> String? {
         var changed = settings
         do {
             try edit(&changed)
         } catch {
-            settingsProblem = error.localizedDescription
-            return
+            return error.localizedDescription
         }
+        guard changed != settings else { return nil }
         settings = changed
         do {
             try store?.save(changed)
@@ -179,6 +275,7 @@ final class AppState {
             settingsProblem = error.errorDescription
         }
         Task { [monitor] in await monitor.update(settings: changed) }
+        return nil
     }
 
     // MARK: Monitoring

@@ -24,18 +24,25 @@ public actor DemoProvider: MarketDataProvider {
     }
 
     public func quotes(for symbols: [String]) async throws(ProviderError) -> QuoteBatch {
-        let time = now()
-        return QuoteBatch(quotes: symbols.map { symbol in
-            let step = steps[symbol, default: 0]
-            steps[symbol] = step + 1
-            let percent = Self.path[min(step, Self.path.count - 1)]
-            return Quote(
-                symbol: symbol, price: Self.basePrice(symbol) * (1 + percent / 100), timestamp: time, source: name,
-                session: .regular)
+        QuoteBatch(quotes: symbols.map { symbol in
+            defer { steps[symbol, default: 0] += 1 }
+            return quote(for: symbol)
         })
     }
 
-    public func testConnection() async throws(ProviderError) {}
+    /// The symbol's quote at its current step, without moving it on, so testing the connection
+    /// doesn't change when the demo's warnings come.
+    public func testConnection(symbol: String) async throws(ProviderError) -> Quote {
+        quote(for: symbol.uppercased())
+    }
+
+    private func quote(for symbol: String) -> Quote {
+        let step = steps[symbol, default: 0]
+        let percent = Self.path[min(step, Self.path.count - 1)]
+        return Quote(
+            symbol: symbol, price: Self.basePrice(symbol) * (1 + percent / 100), timestamp: now(), source: name,
+            session: .regular)
+    }
 
     /// A symbol's starting price, from 100 to 499, the same on every run.
     public static func basePrice(_ symbol: String) -> Double {

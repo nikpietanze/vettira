@@ -44,8 +44,10 @@ private struct Harness {
     ) {
         clock = MonitorTestClock(at: start)
         provider = MockProvider(clock: clock, replies: replies, secondsPerSymbol: secondsPerSymbol)
+        var settings = settings(symbols, disabled: disabled)
+        settings.monitorSettings = monitorSettings
         monitor = QuoteMonitor(
-            provider: provider, settings: settings(symbols, disabled: disabled), monitorSettings: monitorSettings,
+            provider: provider, settings: settings,
             engineState: engineState, clock: clock.monitorClock)
     }
 
@@ -112,7 +114,9 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
         await harness.poll()
         #expect(harness.clock.sleeps == [59])
 
-        await harness.monitor.update(monitorSettings: try MonitorSettings(interval: 30))
+        var faster = settings(["SPY"])
+        faster.monitorSettings = try MonitorSettings(interval: 30)
+        await harness.monitor.update(settings: faster)
         await harness.poll()
         #expect(harness.clock.sleeps.last == 29)
     }
@@ -272,7 +276,9 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
         let harness = Harness(replies: [MockProvider.prices([:], age: 90)])
         await harness.poll()
         #expect(await harness.state("SPY")?.isStale == true)
-        await harness.monitor.update(alertSettings: try AlertSettings(staleTolerance: 120))
+        var tolerant = settings(["SPY"])
+        try tolerant.setStaleTolerance(120)
+        await harness.monitor.update(settings: tolerant)
         #expect(await harness.state("SPY")?.isStale == false)
     }
 

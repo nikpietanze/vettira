@@ -19,6 +19,11 @@ public enum DisplayFormat {
         String(format: "%.2f%%", percent)
     }
 
+    /// A pair of thresholds, early then stronger: `0.25% / 0.40%`.
+    public static func thresholds(_ thresholds: PullbackThresholds) -> String {
+        "\(percent(thresholds.early)) / \(percent(thresholds.strong))"
+    }
+
     /// A data age or a wait: `5 s`, `4 min`, `3 h`, `2 d`, rounded down. A negative one (a quote
     /// time a little ahead of the Mac's clock) is `0 s`.
     public static func duration(_ seconds: TimeInterval) -> String {

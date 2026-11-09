@@ -14,8 +14,6 @@ public actor YahooFinanceProvider: MarketDataProvider {
     /// Says plainly what's asking; never a browser's.
     static let userAgent = "Vettira (https://github.com/nikpietanze/vettira)"
     static let chartURL = "https://query1.finance.yahoo.com/v8/finance/chart/"
-    /// The symbol Test Connection asks for.
-    static let connectionTestSymbol = "SPY"
 
     private let http: any HTTPClient
     private let pacing: RequestPacing
@@ -44,13 +42,6 @@ public actor YahooFinanceProvider: MarketDataProvider {
             }
         }
         return batch
-    }
-
-    public func testConnection() async throws(ProviderError) {
-        let batch = try await quotes(for: [Self.connectionTestSymbol])
-        guard batch.quotes.isEmpty else { return }
-        if !batch.unusableSymbols.isEmpty { throw .noUsableQuote(batch.unusableSymbols) }
-        throw .malformedResponse(detail: "no quote for \(Self.connectionTestSymbol)")
     }
 
     // MARK: One symbol

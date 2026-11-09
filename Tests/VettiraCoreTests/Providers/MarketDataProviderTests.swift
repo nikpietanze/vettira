@@ -18,10 +18,6 @@ private struct CannedProvider: MarketDataProvider {
             },
             unknownSymbols: symbols.filter { known[$0] == nil })
     }
-
-    func testConnection() async throws(ProviderError) {
-        if let failure { throw failure }
-    }
 }
 
 @Suite struct MarketDataProviderTests {
@@ -43,7 +39,21 @@ private struct CannedProvider: MarketDataProvider {
             #expect(error.nextStep.contains("consent page"))
         }
         await #expect(throws: ProviderError.blocked) {
-            try await provider.testConnection()
+            try await provider.testConnection(symbol: "SPY")
+        }
+    }
+
+    @Test func testConnectionReturnsTheSymbolsQuote() async throws {
+        let provider: any MarketDataProvider = CannedProvider(known: ["SPY": 671.2], failure: nil)
+        let quote = try await provider.testConnection(symbol: "SPY")
+        #expect(quote.symbol == "SPY")
+        #expect(quote.price == 671.2)
+    }
+
+    @Test func testConnectionSaysTheSymbolIsUnknown() async {
+        let provider: any MarketDataProvider = CannedProvider(known: [:], failure: nil)
+        await #expect(throws: ProviderError.unknownSymbols(["SPYY"])) {
+            try await provider.testConnection(symbol: "SPYY")
         }
     }
 }

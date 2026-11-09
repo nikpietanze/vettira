@@ -125,12 +125,15 @@ no high, fires no alert and leaves the cycle as it was.
 
 A quote's time is the time of its last trade, not when the provider sent it. So a thinly traded
 symbol that goes more than 60 seconds without a trade reads as stale, and fires no alert, even
-when nothing is wrong with the data. Raise the staleness tolerance for a watchlist like that,
-knowing a higher tolerance also lets older quotes alert.
+when nothing is wrong with the data. Raise the staleness tolerance (**Stale after**, in Settings)
+for a watchlist like that, knowing a higher tolerance also lets older quotes alert.
 
 The rearm margin, the cooldown, the staleness tolerance and the spike limit are
 `AlertSettings`, the same for every symbol; each has the default above, and a value out of range
-(a negative cooldown, a tolerance of 0) is rejected where it comes in.
+(a negative cooldown, a tolerance of 0) is rejected where it comes in. Only the staleness
+tolerance is the user's: Settings offers 30 seconds to an hour, and it's saved with the settings.
+Each symbol's thresholds are its own or the defaults, both set in the app (the dashboard and
+Settings).
 
 ## Saved state
 

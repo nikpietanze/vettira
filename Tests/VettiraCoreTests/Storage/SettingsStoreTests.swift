@@ -21,6 +21,8 @@ private func edited() throws -> UserSettings {
     try settings.watchlist.showInMenuBar(ticker("DIA"))
     settings.defaultThresholds = try PullbackThresholds(early: 0.3, strong: 0.6)
     settings.notificationSound = false
+    settings.monitorSettings = try MonitorSettings(interval: 60)
+    try settings.setStaleTolerance(120)
     return settings
 }
 
@@ -41,6 +43,41 @@ private func edited() throws -> UserSettings {
         #expect(loaded == settings)
         #expect(loaded.watchlist.entries.map(\.symbol.rawValue) == ["SPY", "DIA", "QQQ", "BRK.B"])
         #expect(loaded.watchlist.menuBarSymbol == ticker("DIA"))
+        #expect(loaded.monitorSettings.interval == 60)
+        #expect(loaded.alertSettings.staleTolerance == 120)
+    }
+}
+
+/// Each edit the dashboard and Settings make, on a watchlist of SPY, QQQ and DIA.
+private let edits: [(name: String, edit: @Sendable (inout UserSettings) throws -> Void)] = [
+    ("add", { try $0.watchlist.add(ticker("brk.b")) }),
+    ("remove", { try $0.watchlist.remove(ticker("QQQ")) }),
+    ("drag", { $0.watchlist.move(fromOffsets: [2], toOffset: 0) }),
+    ("move up", { try $0.watchlist.move(ticker("DIA"), by: -1) }),
+    ("pin", { try $0.watchlist.setPinned(true, for: ticker("DIA")) }),
+    ("disable", { try $0.watchlist.setEnabled(false, for: ticker("SPY")) }),
+    ("own thresholds", { try $0.watchlist.setThresholds(PullbackThresholds(early: 1, strong: 2), for: ticker("QQQ")) }),
+    ("menu-bar symbol", { try $0.watchlist.showInMenuBar(ticker("DIA")) }),
+    ("default thresholds", { $0.defaultThresholds = try PullbackThresholds(early: 0.5, strong: 1.5) }),
+    ("update interval", { $0.monitorSettings = try MonitorSettings(interval: 300) }),
+    ("staleness tolerance", { try $0.setStaleTolerance(900) }),
+    ("alert sound", { $0.notificationSound = false }),
+]
+
+@Test(arguments: edits.map(\.name))
+func eachEditIsThereAfterARelaunch(name: String) throws {
+    try withStore { store in
+        var settings = UserSettings()
+        for symbol in ["SPY", "QQQ", "DIA"] { try settings.watchlist.add(ticker(symbol)) }
+        try store.save(settings)
+        let before = settings
+
+        try edits.first { $0.name == name }!.edit(&settings)
+        #expect(settings != before)
+        try store.save(settings)
+
+        // A relaunch: a new store on the same directory.
+        #expect(try SettingsStore(directory: store.directory).load() == settings)
     }
 }
 
@@ -80,6 +117,8 @@ private func edited() throws -> UserSettings {
         #expect(settings.watchlist.menuBarSymbol == ticker("SPY"))
         #expect(settings.watchlist.entry(for: ticker("SPY"))?.isEnabled == true)
         #expect(settings.watchlist.entry(for: ticker("QQQ"))?.isPinned == true)
+        #expect(settings.monitorSettings == .standard)
+        #expect(settings.alertSettings == .standard)
     }
 }
 
@@ -89,6 +128,8 @@ private func edited() throws -> UserSettings {
     #"{"watchlist": {"entries": [{"symbol": "SPY"}, {"symbol": "spy"}]}}"#,
     #"{"watchlist": {"entries": [{"symbol": "SPY"}], "menuBarSymbol": "QQQ"}}"#,
     #"{"defaultThresholds": {"early": 0.4, "strong": 0.25}}"#,
+    #"{"updateInterval": 5}"#,
+    #"{"staleTolerance": 0}"#,
 ])
 func aCorruptFileIsMovedAsideAndTheDefaultsLoad(contents: String) throws {
     try withStore { store in
@@ -111,5 +152,21 @@ func aCorruptFileIsMovedAsideAndTheDefaultsLoad(contents: String) throws {
         #expect(throws: SettingsStoreError.corrupt(movedTo: store.corruptFileURL)) { try store.load() }
         #expect(try String(contentsOf: store.corruptFileURL, encoding: .utf8) == "not json")
         #expect(try store.load() == .defaults)
+    }
+}
+
+// The file format: the update interval and the staleness tolerance in seconds, and none of the
+// alert engine's other settings, which aren't the user's.
+@Test func theFileHoldsTheIntervalAndToleranceInSeconds() throws {
+    try withStore { store in
+        var settings = UserSettings()
+        settings.monitorSettings = try MonitorSettings(interval: 30)
+        try settings.setStaleTolerance(90)
+        try store.save(settings)
+
+        let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any])
+        #expect(json["updateInterval"] as? Double == 30)
+        #expect(json["staleTolerance"] as? Double == 90)
+        #expect(Set(json.keys) == ["watchlist", "defaultThresholds", "notificationSound", "updateInterval", "staleTolerance"])
     }
 }

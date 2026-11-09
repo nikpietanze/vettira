@@ -6,6 +6,7 @@ import VettiraCore
 struct MenuBarPopover: View {
     let state: AppState
     let openDashboard: () -> Void
+    let openSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -25,6 +26,7 @@ struct MenuBarPopover: View {
             Divider()
             HStack {
                 Button("Open Dashboard", action: openDashboard)
+                Button("Settings\u{2026}", action: openSettings)
                 Spacer()
                 Button("Quit \(Vettira.name)") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")

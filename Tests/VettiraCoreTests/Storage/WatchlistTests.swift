@@ -77,6 +77,49 @@ func reorderingMovesEntriesWhereTheyWereDropped(source: [Int], destination: Int,
     #expect(symbols(list.entries) == expected)
 }
 
+// A B C D with C pinned lists C A B D: a drag's offsets are into that order.
+private let pinnedDrags: [(source: [Int], destination: Int, expected: [String])] = [
+    ([3], 1, ["C", "D", "A", "B"]),
+    ([2], 1, ["C", "B", "A", "D"]),
+    // A pinned symbol dropped among the others stays last of the pinned, and the other way round.
+    ([0], 4, ["C", "A", "B", "D"]),
+    ([3], 0, ["C", "D", "A", "B"]),
+]
+
+@Test(arguments: pinnedDrags)
+func aDragWithPinnedSymbolsMovesThemAsListed(source: [Int], destination: Int, expected: [String]) throws {
+    var list = try watchlist("A", "B", "C", "D")
+    try list.setPinned(true, for: ticker("C"))
+    list.move(fromOffsets: IndexSet(source), toOffset: destination)
+    #expect(symbols(list.displayOrder) == expected)
+    #expect(list.entry(for: ticker("C"))?.isPinned == true)
+}
+
+@Test func moveUpAndDownGoOnePlaceAsListed() throws {
+    var list = try watchlist("A", "B", "C", "D")
+    try list.move(ticker("C"), by: -1)
+    #expect(symbols(list.displayOrder) == ["A", "C", "B", "D"])
+    try list.move(ticker("A"), by: 1)
+    #expect(symbols(list.displayOrder) == ["C", "A", "B", "D"])
+    try list.move(ticker("D"), by: -3)
+    #expect(symbols(list.displayOrder) == ["D", "C", "A", "B"])
+}
+
+@Test func movingPastEitherEndOfItsGroupStopsThere() throws {
+    var list = try watchlist("A", "B", "C", "D")
+    try list.setPinned(true, for: ticker("C"))
+    try list.setPinned(true, for: ticker("D"))
+    // Listed C D A B: C and D move only between themselves, A and B only between themselves.
+    try list.move(ticker("C"), by: -1)
+    try list.move(ticker("D"), by: 1)
+    try list.move(ticker("A"), by: -1)
+    try list.move(ticker("B"), by: 5)
+    #expect(symbols(list.displayOrder) == ["C", "D", "A", "B"])
+    try list.move(ticker("A"), by: 1)
+    #expect(symbols(list.displayOrder) == ["C", "D", "B", "A"])
+    #expect(throws: WatchlistError.notInList(ticker("QQQ"))) { try list.move(ticker("QQQ"), by: 1) }
+}
+
 @Test func pinnedSymbolsListFirstInTheirOrder() throws {
     var list = try watchlist("A", "B", "C", "D")
     try list.setPinned(true, for: ticker("D"))

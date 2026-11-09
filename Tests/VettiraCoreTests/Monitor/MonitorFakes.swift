@@ -89,8 +89,6 @@ actor MockProvider: MarketDataProvider {
         return try reply(symbols, clock.now).get()
     }
 
-    func testConnection() async throws(ProviderError) {}
-
     /// A quote for every symbol asked for, `age` seconds old: at `prices[symbol]`, or 100.
     static func prices(
         _ prices: [String: Double], age: TimeInterval = 2, high: Double? = nil, session: Quote.Session = .regular

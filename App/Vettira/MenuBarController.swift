@@ -4,26 +4,36 @@ import os
 import SwiftUI
 import VettiraCore
 
-/// The menu-bar item, its popover and the dashboard window, in AppKit: an `NSStatusItem` whose
-/// button toggles a transient `NSPopover`, each hosting the SwiftUI views. A window-style
-/// `MenuBarExtra` opens its panel only on a real mouse event, so neither accessibility (VoiceOver,
-/// UI scripts) nor the app itself could open it; this button's action is the one a click, a press
-/// and VoiceOver all take. They read `AppState`, which the app owns, so closing the popover or the
-/// dashboard stops nothing.
+/// The menu-bar item, its popover, and the dashboard and Settings windows, in AppKit: an
+/// `NSStatusItem` whose button toggles a transient `NSPopover`, each hosting the SwiftUI views. A
+/// window-style `MenuBarExtra` opens its panel only on a real mouse event, so neither
+/// accessibility (VoiceOver, UI scripts) nor the app itself could open it; this button's action is
+/// the one a click, a press and VoiceOver all take. They read `AppState`, which the app owns, so
+/// closing the popover or a window stops nothing.
+///
+/// While a window is open Vettira shows in the Dock and the app switcher, so the window can be
+/// found like any app's; once the last one closes it's a menu-bar item only again (`DockPresence`).
 @MainActor
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSWindowDelegate {
     private let state: AppState
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
-    private var dashboard: NSWindow?
+    /// The windows made so far, by identifier, kept when they're closed.
+    private var windows: [String: NSWindow] = [:]
+    private var dock = DockPresence()
+    /// Whether windows reopen where they were left (`LaunchOptions.remembersWindowFrames`).
+    private let remembersFrames: Bool
     private let log = Logger(subsystem: "com.andiamosoftware.vettira", category: "menu-bar")
 
-    init(state: AppState) {
+    init(state: AppState, remembersFrames: Bool) {
         self.state = state
+        self.remembersFrames = remembersFrames
         super.init()
         popover.behavior = .transient
         let content = NSHostingController(
-            rootView: MenuBarPopover(state: state, openDashboard: { [weak self] in self?.showDashboard() }))
+            rootView: MenuBarPopover(
+                state: state, openDashboard: { [weak self] in self?.showDashboard() },
+                openSettings: { [weak self] in self?.showSettings() }))
         // The popover takes the content's size and follows it as rows and warnings come and go.
         content.sizingOptions = .preferredContentSize
         popover.contentViewController = content
@@ -72,26 +82,60 @@ final class MenuBarController: NSObject {
     }
 
     /// Opens the dashboard, made the first time and kept when it's closed.
-    private func showDashboard() {
+    func showDashboard() {
+        show(DashboardView.windowID, title: Vettira.name) { [state] in
+            DashboardView(state: state, openSettings: { [weak self] in self?.showSettings() })
+        }
+    }
+
+    /// Opens Settings, made the first time and kept when it's closed.
+    func showSettings() {
+        show(SettingsView.windowID, title: "\(Vettira.name) Settings", firstSize: SettingsView.firstSize) { [state] in
+            SettingsView(state: state)
+        }
+    }
+
+    private func show(_ id: String, title: String, firstSize: NSSize? = nil, content: () -> some View) {
         popover.performClose(nil)
-        let window = dashboard ?? makeDashboard()
-        dashboard = window
+        let window = windows[id] ?? makeWindow(id, title: title, firstSize: firstSize, content: content())
+        windows[id] = window
+        if dock.opened(id) { applyDockPresence() }
         window.makeKeyAndOrderFront(nil)
         // A menu-bar app isn't active, so its window would open behind the frontmost app.
         NSApp.activate()
     }
 
-    private func makeDashboard() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: DashboardView(state: state)))
-        window.title = Vettira.name
-        window.identifier = NSUserInterfaceItemIdentifier(DashboardView.windowID)
-        window.setAccessibilityIdentifier(DashboardView.windowID)
+    /// `firstSize` is the content size the first time the window opens, made no taller than the
+    /// screen has room for; after that it opens with the frame it last had, unless the run is a
+    /// check, which neither reads nor saves frames.
+    private func makeWindow(_ id: String, title: String, firstSize: NSSize?, content: some View) -> NSWindow {
+        let window = NSWindow(contentViewController: NSHostingController(rootView: content))
+        window.title = title
+        window.identifier = NSUserInterfaceItemIdentifier(id)
+        window.setAccessibilityIdentifier(id)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         // Closing hides it; the app, and monitoring, keep running.
         window.isReleasedWhenClosed = false
-        window.center()
-        window.setFrameAutosaveName(DashboardView.windowID)
+        window.delegate = self
+        if !(remembersFrames && window.setFrameUsingName(id)) {
+            if let firstSize, let screen = window.screen ?? NSScreen.main {
+                let room = window.contentRect(forFrameRect: screen.visibleFrame).height
+                window.setContentSize(NSSize(width: firstSize.width, height: min(firstSize.height, room)))
+            }
+            window.center()
+        }
+        if remembersFrames { window.setFrameAutosaveName(id) }
         return window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let id = (notification.object as? NSWindow)?.identifier?.rawValue else { return }
+        if dock.closed(id) { applyDockPresence() }
+    }
+
+    private func applyDockPresence() {
+        NSApp.setActivationPolicy(dock.showsInDock ? .regular : .accessory)
+        log.notice("Dock: \(self.dock.showsInDock ? "shown" : "hidden", privacy: .public), windows open: \(self.dock.openWindows.sorted().joined(separator: ", "), privacy: .public)")
     }
 }
 

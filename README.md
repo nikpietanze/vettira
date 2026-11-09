@@ -13,8 +13,8 @@ Vettira is free, open source and local-first. It watches your stock and ETF watc
 menu bar and notifies you when a price falls from its session high by a threshold you set.
 
 > **Status: in progress.** The logic (quotes, market sessions, session highs, alerts and
-> settings), the menu bar and notifications are built. The dashboard's table and watchlist editing
-> are next, so for now the watchlist is set in its settings file.
+> settings), the menu bar, notifications, the dashboard with watchlist editing, and Settings are
+> built.
 
 ## What it's for, and what it isn't
 
@@ -68,6 +68,17 @@ Run the `Vettira` scheme. The app lives in the menu bar; closing its dashboard l
 until you pick Quit. The menu bar shows one symbol's price and its change from the high; click it
 for every symbol's price, high, pullback and data age, and the connection's health. A pullback
 past a threshold sends a notification, worded as a possible reversal, never advice.
+
+**Open Dashboard**, in that popover, opens a window with the whole watchlist in a table: each
+symbol's price, high (session or observed), change from the high, thresholds, quote time, data age
+and last warning, then the connection's health and diagnostics. Add a symbol by its ticker, search
+the list, drag rows or use the arrows to reorder it, pin symbols to the top, switch one off to stop
+updating it, give one its own thresholds, or pick the one the menu bar shows. **Settings…** (in the
+popover and the dashboard, or Cmd-, while a window is open) sets the update interval, how old a
+quote can be before it's stale, and the default thresholds, and has **Test Connection**, which asks
+Yahoo for one quote and says plainly what came back. Each change is saved as you make it. While
+one of its windows is open Vettira shows in the Dock and the app switcher; closing the last one
+takes it back to the menu bar only, still monitoring.
 Contributing: [CONTRIBUTING.md](https://github.com/nikpietanze/vettira/blob/main/CONTRIBUTING.md).
 
 To try it without calling Yahoo, run a Debug build with `--demo` (made-up prices) and

@@ -17,6 +17,18 @@ import VettiraCore
     #expect(batch.quotes[0].price == DemoProvider.basePrice("SPY"))
 }
 
+@Test func testingTheConnectionDoesntMoveTheDemoOn() async throws {
+    let now = nyTime("10:00:00")
+    let provider = DemoProvider(now: { now })
+    _ = try await provider.quotes(for: ["SPY"])
+    let tested = try await provider.testConnection(symbol: "spy")
+    let next = try await provider.quotes(for: ["SPY"])
+    let base = DemoProvider.basePrice("SPY")
+    #expect(tested.symbol == "SPY")
+    #expect(tested.price == base * (1 + DemoProvider.path[1] / 100))
+    #expect(next.quotes.first?.price == tested.price)
+}
+
 @Test func aDemoRunWarnsOnceEarlyThenOnceStrongerAndNotifiesEachOnce() async {
     let clock = MonitorTestClock(at: nyTime("10:00:00"))
     var settings = UserSettings()
@@ -40,8 +52,7 @@ import VettiraCore
     #expect(signals == [.early, .strong])
     #expect(center.titles == ["SPY: possible reversal, not confirmed", "SPY: possible reversal, not confirmed"])
 
-    let status = MenuBarStatus(
-        settings: settings, snapshot: snapshot, staleTolerance: 60, now: clock.now)
+    let status = MenuBarStatus(settings: settings, snapshot: snapshot, now: clock.now)
     // The path holds 0.40% below the high: past the early threshold, back inside the stronger.
     #expect(status.indicator == .pullback(.early))
     #expect(snapshot.symbols[displayTicker("SPY")]?.lastAlert?.signal == .strong)

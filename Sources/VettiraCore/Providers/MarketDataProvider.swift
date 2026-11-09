@@ -17,9 +17,21 @@ public protocol MarketDataProvider: Sendable {
     /// whole batch. Only a response that can't be read at all fails it.
     func quotes(for symbols: [String]) async throws(ProviderError) -> QuoteBatch
 
-    /// Checks that the provider can be reached and returns quotes, for Settings' Test Connection.
-    /// Throws the error that stops it.
-    func testConnection() async throws(ProviderError)
+    /// Asks for one quote for `symbol`, for Settings' Test Connection, through the same requests
+    /// and pacing as `quotes(for:)`. Throws the error that stops it, the symbol being unknown or
+    /// having no usable quote included.
+    func testConnection(symbol: String) async throws(ProviderError) -> Quote
+}
+
+extension MarketDataProvider {
+    /// One `quotes(for:)` call for the symbol: its quote, or why there's none.
+    public func testConnection(symbol: String) async throws(ProviderError) -> Quote {
+        let batch = try await quotes(for: [symbol])
+        if let quote = batch.quotes.first { return quote }
+        if !batch.unknownSymbols.isEmpty { throw .unknownSymbols(batch.unknownSymbols) }
+        if !batch.unusableSymbols.isEmpty { throw .noUsableQuote(batch.unusableSymbols) }
+        throw .malformedResponse(detail: "no quote for \(symbol)")
+    }
 }
 
 /// What one request for quotes returned.

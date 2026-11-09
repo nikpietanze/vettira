@@ -18,19 +18,36 @@ public struct PullbackThresholds: Equatable, Sendable {
         self.init(checkedEarly: early, strong: strong)
     }
 
+    /// From what the user typed: each a percent such as `0.25`, `0,25` or `0.25%`, with the same
+    /// checks as above.
+    public init(early: String, strong: String) throws(PullbackThresholdsError) {
+        guard let early = Self.percent(early), let strong = Self.percent(strong) else { throw .notANumber }
+        try self.init(early: early, strong: strong)
+    }
+
     private init(checkedEarly early: Double, strong: Double) {
         self.early = early
         self.strong = strong
     }
 
     private static func inRange(_ percent: Double) -> Bool { percent > 0 && percent < 100 }
+
+    /// A typed percent: digits with one `.` or `,`, an optional `%` after them, spaces around.
+    private static func percent(_ text: String) -> Double? {
+        var text = text.trimmingCharacters(in: .whitespaces)
+        if text.hasSuffix("%") { text = String(text.dropLast()).trimmingCharacters(in: .whitespaces) }
+        text = text.replacingOccurrences(of: ",", with: ".")
+        guard !text.isEmpty, text.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }) else { return nil }
+        return Double(text)
+    }
 }
 
 public enum PullbackThresholdsError: Error, Equatable, LocalizedError {
-    case outOfRange, earlyNotBelowStrong
+    case outOfRange, earlyNotBelowStrong, notANumber
 
     public var errorDescription: String? {
         switch self {
+        case .notANumber: "Enter each threshold as a percent, like 0.25."
         case .outOfRange: "A threshold is more than 0% and less than 100%."
         case .earlyNotBelowStrong: "The early warning is a smaller pullback than the stronger warning."
         }
