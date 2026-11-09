@@ -48,9 +48,16 @@ flowchart LR
     tracker["<b>SessionHighTracker</b><br/>per symbol: session or<br/>observed high, pullback<br/>(Session/)"]
     engine["<b>ReversalAlertEngine</b><br/>thresholds, once per high,<br/>rearming; never on stale,<br/>out-of-order or extended-hours<br/>quotes (Alerts/)"]
     ui["<b>App</b><br/>notifications, menu bar,<br/>dashboard"]
+    calendar["<b>MarketCalendar</b><br/>session state, trading day,<br/>open and close; NYSE<br/>holidays (Session/)"]
     provider --> poller --> tracker --> engine --> ui
+    calendar -. session .-> tracker
+    calendar -. session .-> engine
     poller -. data age, errors, quota .-> ui
 ```
+
+The market calendar is built: for any instant it gives the US regular session's state, the
+trading day it belongs to and that session's open and close, from NYSE's published holidays and
+early closes. [alerts.md](alerts.md) describes the session rules and the years it covers.
 
 An alert is a possible, unconfirmed reversal, never advice or an instruction to sell, and its
 thresholds are illustrative. The spec is [spec.md](spec.md).
