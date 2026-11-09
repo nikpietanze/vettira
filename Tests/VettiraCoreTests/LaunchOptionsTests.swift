@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import VettiraCore
 
-// From the review: a check run (`--demo`, or a scratch `--settings-dir`) never posts a
+// A check run (`--demo`, or a scratch `--settings-dir`) never posts a
 // real notification or asks for permission unless it's launched with `--notify`; a plain launch
 // uses the system's notifications. A log-only notification keeps its full text, so the wording
 // can be checked from the log.
