@@ -40,6 +40,104 @@ trading day before it, whose high stands until the next session starts, and Mond
 starts at 04:00 on Monday. Each session has its own open, close and after-hours close as exact
 instants.
 
+## The high
+
+Each symbol's pullback is measured from a high that starts over with each trading day's session.
+`SessionHighTracker` (`Session/SessionHighTracker.swift`) keeps it, and says which kind it is:
+
+| Kind | What it is | Shown as |
+|---|---|---|
+| Session high | The regular session's high, as the provider supplied it (Yahoo's `regularMarketDayHigh`) | "session high" |
+| Observed high | The highest regular-session price Vettira saw itself since it started watching the session | "observed high" |
+
+The provider's high is used whenever it has one and no price Vettira saw is above it. When the
+provider supplies none, or a price comes in above it (its high can lag the price), the high is the
+observed one, and it's labelled that way: it can be lower than the day's actual high, so it's
+never called the session high.
+
+The pullback is how far the price is below the high, in percent:
+
+```
+pullbackPct = (high - price) / high * 100
+```
+
+## Thresholds and the alert cycle
+
+Each symbol has two thresholds (`PullbackThresholds`), set for it or taken from the global
+defaults: an **early warning**, by default a pullback of 0.25%, and a **stronger warning**, by
+default 0.40%. They're illustrative, not validated trading signals. `ReversalAlertEngine`
+(`Alerts/ReversalAlertEngine.swift`) takes each quote as it comes and fires as soon as a fresh
+quote is past a threshold, with no waiting for confirmation.
+
+An alert says it's a **possible reversal, not confirmed**, never advice or an instruction to sell.
+It carries the symbol, the price, the high and whether it's the session or the observed high, the
+pullback, which warning it is and the threshold it was set to, the quote's own time, the data age
+(how old the quote was when it was evaluated), and its source. Its one-line summary shows the
+threshold and the data age: "Early warning (0.25% threshold): possible reversal, not confirmed.
+SPY is 0.30% below its observed high. Quote 5 s old."
+
+Each threshold fires **once per high-water-mark cycle**:
+
+- **Once.** After the early warning, a deeper pullback sends the stronger one; nothing repeats
+  while the price moves around below the same high, recovering or dipping again. A quote past both
+  thresholds at once sends one alert, the stronger warning, which covers the early one.
+- **Rearming.** A new cycle starts, and both thresholds can fire again, when the high rises
+  **0.10%** or more above the high at the last alert (`rearmPercent`), or a new trading day's
+  session starts. A smaller new high moves the high, so later pullbacks are measured from it, but
+  doesn't rearm.
+- **Cooldown.** The same threshold doesn't fire twice for a symbol within **5 minutes**, by quote
+  time (`cooldown`), even after a rearm, so a price see-sawing around a new high doesn't send a
+  stream of alerts. A threshold held back fires on the first fresh quote after the cooldown that's
+  still past it. The cooldown never holds the stronger warning back after an early one.
+- **Already past.** If the price is past a threshold on the first quote Vettira uses in a
+  session (it started mid-day, below the provider's session high), that quote alerts.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Armed: session starts
+    Armed --> EarlySent: pullback ≥ early
+    Armed --> StrongSent: pullback ≥ strong (one alert)
+    EarlySent --> StrongSent: pullback ≥ strong
+    EarlySent --> Armed: high ≥ alerted high + 0.10%
+    StrongSent --> Armed: high ≥ alerted high + 0.10%
+    EarlySent --> [*]: next session
+    StrongSent --> [*]: next session
+```
+
+A threshold that comes up again after a rearm still waits out its cooldown.
+
+## What keeps a quote from alerting
+
+A quote that fails any of these checks is rejected with its reason (`QuoteRejection`): it changes
+no high, fires no alert and leaves the cycle as it was.
+
+| Reason | When |
+|---|---|
+| `invalidPrice` | The price isn't a positive number |
+| `notInCalendar` | The calendar doesn't cover the quote's date ([below](#the-calendar)) |
+| `outsideRegularHours` | The quote's time isn't in the regular session by the calendar (pre-market, after-hours, closed, or after an early close), or the provider says it isn't a regular-session quote. The close itself counts as after the session |
+| `delayed` | The provider says its data is delayed by more than the staleness tolerance |
+| `stale` | The quote is more than **60 seconds** old (`staleTolerance`): the time since its own timestamp, which is how a delay from a provider that doesn't declare one, like Yahoo's, shows |
+| `aheadOfClock` | The quote's time is more than the staleness tolerance ahead of the Mac's clock |
+| `duplicate` | The quote has the same time as the last one used |
+| `outOfOrder` | The quote is older than the last one used |
+| `implausibleJump` | The price moved more than **10%** (`spikePercent`) from the last price used this session. If the next quote, with a later time, is within 10% of the jumped price, the move is taken as real and that quote is used; until then nothing alerts on it |
+
+A quote's time is the time of its last trade, not when the provider sent it. So a thinly traded
+symbol that goes more than 60 seconds without a trade reads as stale, and fires no alert, even
+when nothing is wrong with the data. Raise the staleness tolerance for a watchlist like that,
+knowing a higher tolerance also lets older quotes alert.
+
+The rearm margin, the cooldown, the staleness tolerance and the spike limit are
+`AlertSettings`, the same for every symbol; each has the default above, and a value out of range
+(a negative cooldown, a tolerance of 0) is rejected where it comes in.
+
+## Saved state
+
+The engine's `state` (each symbol's high, its last quote's time and price, and its cycle: which
+thresholds fired, at what high and when) is `Codable`, so the app can save it and hand it back after a
+relaunch, so a pullback that already alerted doesn't alert again.
+
 ## The calendar
 
 The calendar is a dated table of NYSE's full holidays and early closes, from NYSE's [Holidays &

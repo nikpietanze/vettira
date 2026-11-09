@@ -87,7 +87,11 @@ are in [providers.md](providers.md).
 
 The market calendar is built: for any instant it gives the US regular session's state, the
 trading day it belongs to and that session's open and close, from NYSE's published holidays and
-early closes. [alerts.md](alerts.md) describes the session rules and the years it covers.
+early closes. So are the session-high tracker and the alert engine: per symbol, the engine
+rejects a quote that isn't fresh, in order and in regular hours, keeps the session or observed
+high, and fires each threshold once per high-water-mark cycle, with a `Codable` state the app can
+save. [alerts.md](alerts.md) describes the session rules, the years the calendar covers, and when
+alerts fire. The poller and the app's notifications are still to come.
 
 An alert is a possible, unconfirmed reversal, never advice or an instruction to sell, and its
 thresholds are illustrative. The spec is [spec.md](spec.md).
