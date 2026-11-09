@@ -60,7 +60,8 @@ symbol, one at a time and at most one a second, backing off when Yahoo rate-limi
 Yahoo doesn't support or endorse it, it can change or be blocked without notice, and Yahoo's
 terms govern its use; [spec.md](spec.md) says what that data is and isn't. The `MarketDataProvider`
 protocol keeps the rest of the pipeline independent of it, so a licensed or streaming provider
-can be added later.
+can be added later. The protocol, the normalized quote, the provider's requests and its errors
+are in [providers.md](providers.md).
 
 The market calendar is built: for any instant it gives the US regular session's state, the
 trading day it belongs to and that session's open and close, from NYSE's published holidays and
