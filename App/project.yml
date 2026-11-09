@@ -1,0 +1,37 @@
+# The macOS app. XcodeGen makes Vettira.xcodeproj from this file; the project is never committed.
+#   cd App && xcodegen
+name: Vettira
+options:
+  bundleIdPrefix: com.andiamosoftware
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  Vettira:
+    path: ..
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  Vettira:
+    type: application
+    platform: macOS
+    sources: [Vettira]
+    dependencies:
+      - package: Vettira
+        product: VettiraCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.andiamosoftware.vettira
+        PRODUCT_NAME: Vettira
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Vettira
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
+        # Menu-bar only: no Dock icon, no app menu.
+        INFOPLIST_KEY_LSUIElement: YES
+        # Signed to run locally; no developer team is needed to build it.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: YES
