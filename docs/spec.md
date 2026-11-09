@@ -1,6 +1,6 @@
 # Vettira: engineering handoff (MVP spec)
 
-The product spec the MVP is built to. Written as "Market Peak Monitor" before the app was named Vettira.
+The product spec the MVP is built to. Written as "Market Peak Monitor" before the app was named Vettira. Revised in November 2026: quotes come from Yahoo Finance's unofficial endpoints, with no key, instead of a paid third-party reseller that needed one.
 
 **Product:** Free, open-source, local-first macOS app for monitoring stocks and ETFs for potential intraday reversals. **No brokerage integration or order placement.**
 
@@ -13,13 +13,22 @@ The product spec the MVP is built to. Written as "Market Peak Monitor" before th
 
 ## Market-data integration (important caveat)
 
-There is **no official public Yahoo Finance stock-data API key**. Treat the proposed “Yahoo Finance API key” as a **user-owned key for a Yahoo Finance-compatible *third-party provider***, such as a specific RapidAPI marketplace API, not a key issued by Yahoo Finance. Provider endpoints, quotas, latency, terms, and availability vary; do not imply that data is consolidated, tick-by-tick, or guaranteed real-time.
+Vettira reads quotes from **Yahoo Finance's unofficial JSON quote endpoints**, the ones the open-source [yfinance](https://github.com/ranaroussi/yfinance) library uses. There is no official public Yahoo Finance stock-data API, and these endpoints need no API key and no account.
 
-- MVP: support **one documented, named RapidAPI/Yahoo Finance-compatible quote provider**, with setup fields for **provider, API key**, and any required API host. Use `X-RapidAPI-Key` / `X-RapidAPI-Host` where applicable. Add a **Test Connection** button and clear errors for bad credentials, entitlement, rate limiting, missing symbols, or stale quotes.
-- Implement a `MarketDataProvider` protocol so a licensed streaming provider can be added later without modifying alert logic or UI.
-- Prefer streaming **only if the selected provider actually supports it**. Otherwise use configurable, quota-aware **batched polling**, adaptive backoff, and a visible update interval. Never promise 1-second updates if the plan cannot sustain them. Throttle automatically when approaching limits.
+What that data source is, stated plainly here, in the README and in the provider guide:
+
+- **Unofficial.** Yahoo doesn't document, support, license or endorse these endpoints, or Vettira's use of them, and Vettira isn't affiliated with Yahoo. Nothing in the app or its docs calls them official, documented, supported, licensed or endorsed, or implies a licence to the data.
+- **It can stop working.** Yahoo can change, break, rate-limit or block the endpoints at any time, without notice. When that happens Vettira gets no quotes, says so, and fires no price alerts until it's fixed.
+- **Yahoo's terms govern its use.** Yahoo's [Terms of Service](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) (last updated 1 November 2026) say users may not "access or collect data, or attempt to access or collect data, from our Services using any automated means, devices, programs, algorithms or methodologies, including but not limited to robots, spiders, scrapers, data mining tools, or data gathering or extraction tools, for any purpose without our express, prior permission", must not "try to access them using a method other than the interface and the instructions that we provide", may not use the Services "for any commercial purpose" unless expressly stated, and may not engage in "high volume activity" without Yahoo's prior written consent. Vettira doesn't have that permission. Each user's use of the data is between them and Yahoo, under those terms. Vettira is for personal, non-commercial use: it shows the data only to the user on their own Mac, and never redistributes or republishes it.
+- **Not real-time, not complete.** Quotes may be delayed, and the chart endpoint doesn't say by how much: the app shows each quote's own time and its age, so a delay shows as an older quote. The data isn't consolidated across all exchanges, isn't tick-by-tick, and isn't guaranteed real-time.
+
+How the app uses it:
+
+- MVP: one provider, Yahoo Finance's unofficial `v8/finance/chart` endpoint, one symbol per request, with no cookie or crumb. `v7/finance/quote` batches symbols but refuses non-browser clients at its crumb step, and Vettira doesn't impersonate a browser. The session state comes from Vettira's own market calendar and the chart's `currentTradingPeriod`. JSON endpoints only: never scrape Yahoo's web pages. Settings have no key or account fields. A **Test Connection** button checks that the endpoint answers, with clear errors for rate limiting or blocking, a response the app can't read (the endpoint changed), missing symbols, and stale quotes.
+- Implement a `MarketDataProvider` protocol so a licensed or streaming provider can be added later without modifying alert logic or UI. Any key such a provider needs lives in the macOS Keychain, and no app-developer key is ever bundled.
+- **Be a light client.** As few requests as the endpoint allows. The chart endpoint takes one symbol, so it's one request per enabled symbol per poll, sent one at a time, never in parallel, no more often than a visible, configurable update interval, and at most one request a second overall. Back off on rate limiting (HTTP 429) and errors, and slow down automatically rather than retrying hard. No bulk or historical downloads. Send a plain, honest User-Agent that names Vettira, never one impersonating a browser to get around a block. Never promise 1-second updates.
 - Normalize incoming data: symbol, price, quote timestamp, source/provider, regular-session high when legitimately supplied, session state, and delay/staleness indication. Display **data age** prominently and suspend price-sensitive alerts when quotes are stale or delayed beyond a user-configurable tolerance.
-- Make source restrictions and any Yahoo/third-party licensing or redistribution obligations explicit in README; **do not ship scraping-based Yahoo endpoints as a purported official/keyed API**.
+- The README and the provider guide state all of the above and link Yahoo's terms. Yahoo and Yahoo Finance are named only to say where the data comes from; no Yahoo logos or branding.
 
 ## Reversal detection — MVP
 
@@ -36,25 +45,24 @@ Scope: **US regular trading hours (09:30–16:00 America/New_York)**, with a new
 
 - **Swift 6 + SwiftUI**, `MenuBarExtra` for menu-bar presentation; a separately controlled `Window`/`WindowGroup` for dashboard. Shared `@Observable`/actor-backed application state; monitoring owned by the app/service layer, **not the dashboard view lifecycle**.
 - `MarketDataProvider` → normalized quote stream/poller → per-symbol `SessionHighTracker` → `ReversalAlertEngine` → `UNUserNotificationCenter` + sound → menu bar/dashboard.
-- Store **API keys in macOS Keychain**, never plaintext preferences, logs, crash reports, or repo. Save watchlist, thresholds, and UI preferences in local app storage. No telemetry or cloud dependency by default. No trading credentials required.
-- Make provider calls efficient across the watchlist (batch where supported), implement reconnect/retry, rate-limit handling, and basic diagnostics (last received time, polling cadence, errors, source).
+- The MVP's data source needs no API key. Any key a later provider needs is stored in the **macOS Keychain** only, never in plaintext preferences, logs, crash reports, or the repo. Save watchlist, thresholds, and UI preferences in local app storage. No telemetry or cloud dependency by default. No trading credentials required.
+- Make provider calls light across the watchlist (one request per enabled symbol per poll, one at a time), implement reconnect/retry, rate-limit handling, and basic diagnostics (last received time, polling cadence, errors, source).
 
 ## MVP acceptance criteria
 
-- [ ] User can enter/test their own **third-party Yahoo Finance-compatible provider API key**; no app-developer key is bundled.
+- [ ] User can test the connection to Yahoo Finance's unofficial endpoints with no key or account, and the app says plainly that the data is unofficial, not endorsed by Yahoo, and governed by Yahoo's terms; no app-developer key is bundled.
 - [ ] User can monitor at least **five user-selected stock/ETF symbols** concurrently, with per-symbol thresholds.
 - [ ] Menu bar stays active and alerts keep running after dashboard is closed; dashboard can reopen without losing state.
 - [ ] Fresh-data threshold crossings trigger correct, de-duplicated notifications; false signals are labeled as possible, not certain, reversals.
-- [ ] App explicitly identifies stale/delayed data, provider failures, quota exhaustion, and whether highs are **session** or **observed**.
+- [ ] App explicitly identifies stale/delayed data, provider failures, rate limiting or blocking, and whether highs are **session** or **observed**.
 - [ ] Tests cover session reset, after-hours/half-days, duplicate alerts, higher highs/rearming, out-of-order quotes, reconnection, and rate-limit behavior using recorded/mock quotes.
-- [ ] Public repository contains build/run instructions, provider setup guide, privacy statement, license (e.g., MIT), and clear **third-party data-source and terms** disclaimers.
+- [ ] Public repository contains build/run instructions, provider setup guide, privacy statement, license (e.g., MIT), and clear **data-source and Yahoo terms** disclaimers.
 
 ## Out of scope for v1
 
-Brokerage order execution, portfolio holdings, predictive peak detection, guaranteed real-time/full-market data, backtesting, and hosted infrastructure. A true low-latency streaming provider is a future adapter if the keyed Yahoo-compatible provider's latency is insufficient.
+Brokerage order execution, portfolio holdings, predictive peak detection, guaranteed real-time/full-market data, backtesting, and hosted infrastructure. A licensed or low-latency streaming provider is a future adapter if Yahoo's unofficial endpoints prove too delayed or unreliable.
 
 ## Reference links
 
 - [yfinance project disclaimer and unofficial Yahoo endpoints](https://github.com/ranaroussi/yfinance)
-- [RapidAPI authentication headers](https://docs.rapidapi.com/docs/configuring-api-security)
-- [Example third-party Yahoo Finance Data API on RapidAPI](https://rapidapi.com/otterapi-otterapi-default/api/yahoo-finance-data-api3)
+- [Yahoo Terms of Service](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html)
