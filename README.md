@@ -20,3 +20,5 @@ cd App && xcodegen && open Vettira.xcodeproj
 
 The app runs in the menu bar; closing its dashboard leaves it running until you pick Quit. How
 it's put together: [docs/architecture.md](docs/architecture.md).
+
+What Vettira stores and sends: [PRIVACY.md](PRIVACY.md).

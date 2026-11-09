@@ -35,6 +35,28 @@ views, so it doesn't stop or restart when the window closes or opens.
 
 So far the app is the shell: a menu with Open Dashboard and Quit, and an empty dashboard.
 
+## Storage
+
+What the user sets up stays on their Mac, in one file, as [PRIVACY.md](../PRIVACY.md) promises.
+
+```mermaid
+flowchart LR
+    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds"]
+    store["<b>SettingsStore</b><br/>JSON, written whole"]
+    settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
+```
+
+`UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
+`PullbackThresholds`; `SettingsStore` saves it as JSON in
+`~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save.
+Input is checked where it comes in, into types that can't hold a bad value: a `TickerSymbol` is
+trimmed, uppercased, 1 to 15 of `A-Z 0-9 . - ^ =`; thresholds are each between 0 and 100
+percent, early below strong; the watchlist has each symbol once, and its menu-bar symbol is on
+it. Decoding goes through the same checks, so a file that breaks them is corrupt: the store moves
+it to `settings.corrupt.json` and starts from the defaults (an empty watchlist, 0.25% and
+0.40%). A field an older file lacks gets its default, so a new setting is added with
+`decodeIfPresent` and a default.
+
 ## The pipeline (planned)
 
 How a quote becomes an alert, once the parts are built. Each box is a part of `VettiraCore`
