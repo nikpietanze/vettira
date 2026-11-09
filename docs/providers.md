@@ -10,10 +10,14 @@ needs no key, no account and no cookie, and there's nothing to set up.
 
 - **Unofficial and undocumented.** Yahoo has no public market-data API. This endpoint isn't
   published, documented or supported for use by other apps.
-- **Not licensed or endorsed by Yahoo.** Vettira isn't affiliated with Yahoo, and Yahoo hasn't
-  approved this use. Yahoo's terms of service govern your use of its data, including what you may
-  do with it: read them at [legal.yahoo.com](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html).
-  Vettira is for your personal use; don't redistribute the data.
+- **Not licensed or endorsed by Yahoo.** Vettira isn't affiliated with Yahoo, Yahoo hasn't
+  approved this use, and nothing here gives you any right to Yahoo's data.
+- **Yahoo's terms govern your use.** Yahoo's terms of service apply to its data and to how it's
+  reached: read them at [legal.yahoo.com](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html).
+  Among other things, they restrict collecting data by automated means, commercial use and
+  high-volume use, each without Yahoo's permission, and Vettira has no permission from Yahoo.
+  Whether your use follows them is between you and Yahoo, and you're responsible for it. Vettira
+  is for personal, non-commercial use on your own Mac; don't redistribute the data.
 - **It can break or be blocked without notice.** Yahoo can change the endpoint, limit how often
   it answers, or refuse requests from apps like Vettira, from your network or from your region,
   at any time. When it does, Vettira shows the error and has no quotes until it works again.
