@@ -1,0 +1,54 @@
+# Builds and tests Vettira on GitHub's hosted macOS runners. It runs in forks: the upstream repo
+# doesn't run hosted jobs, so there the job skips.
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  XCODEGEN_VERSION: 2.46.0
+  XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+
+jobs:
+  swift:
+    name: Build and test
+    if: github.repository != 'nikpietanze/vettira'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+
+      - name: Tests
+        run: swift test
+
+      - name: Package
+        run: swift build
+
+      - name: XcodeGen
+        run: |
+          tools=$RUNNER_TEMP/xcodegen
+          mkdir -p "$tools"
+          curl -fsSL --retry 3 -o "$tools/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "$XCODEGEN_SHA256  $tools/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$tools/xcodegen.zip" -d "$tools"
+          echo "$tools/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: App
+        run: |
+          (cd App && xcodegen generate --quiet)
+          xcodebuild build -project App/Vettira.xcodeproj -scheme Vettira -configuration Debug \
+            -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath .build/xcode -quiet
