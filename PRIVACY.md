@@ -5,14 +5,21 @@ it collects nothing about you and sends nothing about you anywhere.
 
 ## What it stores, and where
 
-Everything stays on your Mac, in one file:
-`~/Library/Application Support/Vettira/settings.json`, plain JSON. It holds your watchlist (its
-symbols and their order, which are pinned or enabled, each symbol's own thresholds, and the
-symbol the menu bar shows), your default thresholds, how often Vettira updates and how old a quote
-can be before it's stale, and whether alerts play a sound. Nothing else.
+Everything stays on your Mac, in two files, plain JSON, in
+`~/Library/Application Support/Vettira/`:
 
-If the file isn't valid settings, Vettira moves it to `settings.corrupt.json` in the same folder
-and starts from the defaults, so the old file isn't overwritten.
+- `settings.json` holds your watchlist (its symbols and their order, which are pinned or enabled,
+  each symbol's own thresholds, and the symbol the menu bar shows), your default thresholds, how
+  often Vettira updates and how old a quote can be before it's stale, and whether alerts play a
+  sound.
+- `alert-state.json` holds what Vettira remembers about each symbol on your watchlist, so it
+  doesn't alert you twice for the same pullback after you quit and reopen it: the symbol's high,
+  the last quote's time and price, and which thresholds alerted, at what high and when. A symbol
+  you remove from the watchlist is removed from it too.
+
+Nothing else. If `settings.json` isn't valid settings, Vettira moves it to `settings.corrupt.json`
+in the same folder and starts from the defaults, so the old file isn't overwritten. If
+`alert-state.json` can't be read, Vettira starts its alerts afresh and replaces it.
 
 ## Notifications and Launch at Login
 

@@ -258,6 +258,52 @@ extension QuoteEvaluation {
         #expect(feed.send(100.30, at: "10:05:00").alert?.signal == .early)
     }
 
+    // MARK: Saved state
+
+    @Test func aRestoredStateDoesNotAlertAgainForTheSamePullback() throws {
+        var feed = Feed()
+        feed.send(100, at: "10:00:00")
+        #expect(feed.send(99.70, at: "10:01:00").alert?.signal == .early)
+
+        // A relaunch: the state goes through the file into a new engine.
+        try withAlertStateStore { store in
+            try store.save(feed.engine.state)
+            let restored = try store.load()
+            var relaunched = Feed(ReversalAlertEngine(state: restored))
+            #expect(relaunched.engine.state == feed.engine.state)
+            let same = relaunched.send(99.70, at: "10:03:00")
+            #expect(same.isAcceptedWithoutAlert)
+            #expect(same.high == SessionHigh(price: 100, kind: .observed))
+            // The stronger warning, not sent before the relaunch, still comes.
+            #expect(relaunched.send(99.50, at: "10:04:00").alert?.signal == .strong)
+        }
+    }
+
+    @Test func aStateSavedInOneSessionDoesNotCarryIntoTheNext() throws {
+        var feed = Feed()
+        feed.send(100, at: "10:00:00")
+        #expect(feed.send(99.50, at: "10:01:00").alert?.signal == .strong)
+
+        // Relaunched Wednesday, the same high and the same pullback warn again.
+        try withAlertStateStore { store in
+            try store.save(feed.engine.state)
+            let restored = try store.load()
+            var wednesdayFeed = Feed(ReversalAlertEngine(state: restored))
+            #expect(wednesdayFeed.send(100, at: "10:00:00", on: wednesday).isAcceptedWithoutAlert)
+            #expect(wednesdayFeed.send(99.50, at: "10:01:00", on: wednesday).alert?.signal == .strong)
+        }
+    }
+
+    @Test func removingSymbolsForgetsOnlyThem() {
+        var feed = Feed()
+        for symbol in ["SPY", "QQQ", "DIA"] { feed.send(100, at: "10:00:00", symbol: symbol) }
+        #expect(feed.engine.state.trackedSymbols == ["SPY", "QQQ", "DIA"])
+        feed.engine.removeSymbols(notIn: ["spy", "DIA", "AAPL"])
+        #expect(feed.engine.state.trackedSymbols == ["SPY", "DIA"])
+        // QQQ starts over: its next quote is a new high, not a pullback from the old one.
+        #expect(feed.send(99, at: "10:01:00", symbol: "QQQ").high == SessionHigh(price: 99, kind: .observed))
+    }
+
     // MARK: Sessions
 
     @Test func aNewSessionResetsTheHighAndRearms() throws {

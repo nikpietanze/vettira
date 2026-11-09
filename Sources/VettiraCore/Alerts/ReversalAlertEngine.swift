@@ -13,6 +13,9 @@ public struct ReversalAlertEngine: Sendable {
         var symbols: [String: SymbolState] = [:]
 
         public init() {}
+
+        /// The symbols it remembers anything about.
+        public var trackedSymbols: Set<String> { Set(symbols.keys) }
     }
 
     public var settings: AlertSettings
@@ -32,6 +35,13 @@ public struct ReversalAlertEngine: Sendable {
         let evaluation = symbol.evaluate(quote, thresholds: thresholds, now: now, settings: settings, calendar: calendar)
         state.symbols[quote.symbol] = symbol
         return evaluation
+    }
+
+    /// Forgets every symbol but `symbols` (compared uppercased), so the state of one taken off
+    /// the watchlist isn't kept, or saved, for good.
+    public mutating func removeSymbols(notIn symbols: Set<String>) {
+        let keep = Set(symbols.map { $0.uppercased() })
+        state.symbols = state.symbols.filter { keep.contains($0.key.uppercased()) }
     }
 }
 

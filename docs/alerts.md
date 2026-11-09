@@ -138,8 +138,15 @@ Settings).
 ## Saved state
 
 The engine's `state` (each symbol's high, its last quote's time and price, and its cycle: which
-thresholds fired, at what high and when) is `Codable`, so the app can save it and hand it back after a
-relaunch, so a pullback that already alerted doesn't alert again.
+thresholds fired, at what high and when) is `Codable`. The app saves it in `alert-state.json`, next
+to the settings, after each poll that changed it, and hands it back to the engine at launch, so a
+pullback that already alerted doesn't alert again after a relaunch, and the cooldown still holds.
+
+Saved state never carries one session's cycle into the next: the first quote of a new trading
+day starts a new high and a new cycle, as it does without a relaunch. A symbol taken off the
+watchlist is forgotten (`removeSymbols(notIn:)`); a disabled one is kept, so turning it back on
+the same day doesn't alert again. A missing file, or one that can't be read or is another
+version, starts every symbol afresh, as a first launch does.
 
 ## The calendar
 

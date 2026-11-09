@@ -55,14 +55,19 @@ final class AppState {
     init(options: LaunchOptions) {
         var store: SettingsStore?
         var settings = UserSettings.defaults
+        // Whether these are the user's settings, not the defaults a file that couldn't be used
+        // left the run with.
+        var settingsLoaded = false
         do {
-            store = try options.settingsDirectory.map(SettingsStore.init(directory:)) ?? SettingsStore.applicationSupport()
+            store = try SettingsStore(
+                directory: options.storageDirectory(applicationSupport: SettingsStore.applicationSupportDirectory))
         } catch {
             settingsProblem = "Couldn't find Application Support: \(error.localizedDescription)"
         }
         if let loading = store {
             do {
                 settings = try loading.load()
+                settingsLoaded = true
             } catch {
                 settingsProblem = error.errorDescription
                 // A file that's there but can't be read is left alone: saving would replace it.
@@ -85,7 +90,31 @@ final class AppState {
             clockOffset = 0
         }
         self.provider = provider
-        monitor = QuoteMonitor(provider: provider, settings: settings, clock: clock)
+        // What the alert engine remembers, so a relaunch doesn't alert again for a pullback it
+        // already alerted. A file that can't be used is logged and alerts start afresh. Kept only
+        // when the settings loaded: a run on the defaults because settings.json couldn't be read
+        // or was corrupt has an empty watchlist, which would drop every symbol's saved state.
+        let stateLog = Logger(subsystem: "com.andiamosoftware.vettira", category: "alert-state")
+        let stateStore = options.keepsAlertState && settingsLoaded
+            ? store.map { AlertStateStore(directory: $0.directory) } : nil
+        var engineState = ReversalAlertEngine.State()
+        if let stateStore {
+            do {
+                engineState = try stateStore.load()
+                stateLog.notice("Alert state: \(engineState.trackedSymbols.count) symbols from \(stateStore.fileURL.path, privacy: .public)")
+            } catch {
+                stateLog.error("\(error.localizedDescription, privacy: .public)")
+            }
+        } else {
+            stateLog.notice("Alert state: not kept for this run")
+        }
+        monitor = QuoteMonitor(provider: provider, settings: settings, engineState: engineState, clock: clock) { state in
+            do {
+                try stateStore?.save(state)
+            } catch {
+                stateLog.error("\(error.localizedDescription, privacy: .public)")
+            }
+        }
         switch options.notifications {
         case .system:
             center = UserNotificationCenter()

@@ -80,3 +80,34 @@ private final class Lines: @unchecked Sendable {
             + "(sound on)"
     ])
 }
+
+// A check run with a scratch directory reads and writes its files, the alert state among them,
+// only there; a demo run without one keeps no alert state, so its made-up highs never reach the
+// user's own file.
+
+@Test(arguments: [
+    ["Vettira", "--settings-dir", "/tmp/check"],
+    ["Vettira", "--demo", "--settings-dir", "/tmp/check"],
+])
+func aScratchDirectoryHoldsTheAlertStateAndApplicationSupportIsNotUsed(arguments: [String]) {
+    let options = LaunchOptions.parse(arguments)
+    let directory = options.storageDirectory {
+        Issue.record("Application Support was looked up")
+        return URL(filePath: "/Users/someone/Library/Application Support/Vettira")
+    }
+    #expect(directory == URL(filePath: "/tmp/check", directoryHint: .isDirectory))
+    #expect(options.keepsAlertState)
+    #expect(AlertStateStore(directory: directory).fileURL.path == "/tmp/check/alert-state.json")
+}
+
+@Test func aPlainLaunchKeepsItsAlertStateInApplicationSupport() {
+    let options = LaunchOptions.parse(["Vettira"])
+    let support = URL(filePath: "/Users/someone/Library/Application Support/Vettira", directoryHint: .isDirectory)
+    #expect(options.storageDirectory { support } == support)
+    #expect(options.keepsAlertState)
+}
+
+@Test func aDemoRunWithoutAScratchDirectoryKeepsNoAlertState() {
+    #expect(!LaunchOptions.parse(["Vettira", "--demo"]).keepsAlertState)
+    #expect(!LaunchOptions.parse(["Vettira"], environment: ["VETTIRA_DEMO": "1"]).keepsAlertState)
+}

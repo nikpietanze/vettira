@@ -10,8 +10,8 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--demo` or `VETTIRA_DEMO=1`: made-up prices from `DemoProvider` instead of Yahoo, on a clock moved into regular
     /// hours, so a run alerts at any time of day and calls no provider.
     public var demo = false
-    /// `--settings-dir <path>` or `VETTIRA_SETTINGS_DIR=<path>`: read and write `settings.json` there, not in
-    /// `~/Library/Application Support/Vettira/`.
+    /// `--settings-dir <path>` or `VETTIRA_SETTINGS_DIR=<path>`: read and write `settings.json` and
+    /// `alert-state.json` there, not in `~/Library/Application Support/Vettira/`.
     public var settingsDirectory: URL?
     /// `--notify` or `VETTIRA_NOTIFY=1`: post a demo or scratch run's alerts as real notifications after all.
     public var notify = false
@@ -44,6 +44,17 @@ public struct LaunchOptions: Equatable, Sendable {
         }
         return options
     }
+
+    /// The directory the app reads and writes its files in: the scratch one `--settings-dir`
+    /// names, or else `applicationSupport()`, which it then calls.
+    public func storageDirectory(applicationSupport: () throws -> URL) rethrows -> URL {
+        try settingsDirectory ?? applicationSupport()
+    }
+
+    /// Whether the alert engine's state is saved and read back at launch. Not for a demo run
+    /// without a scratch directory: its made-up highs would land in the user's own file and hold
+    /// back their real alerts.
+    public var keepsAlertState: Bool { !demo || settingsDirectory != nil }
 
     /// Whether the run is a check: a demo or scratch run, which leaves the user's own setup alone.
     public var isCheck: Bool { demo || settingsDirectory != nil }

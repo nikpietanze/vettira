@@ -151,9 +151,10 @@ opens Login Items.
 `VettiraCore`), each as a launch argument or an environment variable: `--demo`
 (`VETTIRA_DEMO=1`), for the demo provider's made-up prices
 ([providers.md](providers.md#the-demo-provider)) on a clock moved into regular hours, and
-`--settings-dir <path>` (`VETTIRA_SETTINGS_DIR`), for a settings file somewhere other than
-Application Support, so the app can be run and checked without calling Yahoo or touching the
-user's settings. Either one makes the run a check (`isCheck`), whose alerts go only to the log
+`--settings-dir <path>` (`VETTIRA_SETTINGS_DIR`), for a directory other than Application Support
+to keep `settings.json` and `alert-state.json` in (`storageDirectory`), so the app can be run and
+checked without calling Yahoo or touching the user's files. A demo run without one keeps no alert
+state (`keepsAlertState`), so its made-up highs never reach the user's own file. Either one makes the run a check (`isCheck`), whose alerts go only to the log
 (`LogNotificationCenter`, each notification's full text) and which never asks for notification
 permission, unless it's also launched with `--notify` (`VETTIRA_NOTIFY=1`). A check also neither
 reads nor saves its windows' frames (`remembersWindowFrames`): they live in the app's defaults,
@@ -162,13 +163,17 @@ them all.
 
 ## Storage
 
-What the user sets up stays on their Mac, in one file, as [PRIVACY.md](../PRIVACY.md) promises.
+What the user sets up stays on their Mac, in one file, and what the alert engine remembers in
+another next to it, as [PRIVACY.md](../PRIVACY.md) promises.
 
 ```mermaid
 flowchart LR
     settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound"]
     store["<b>SettingsStore</b><br/>JSON, written whole"]
     settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
+    engine["<b>ReversalAlertEngine.State</b><br/>per symbol: the high, the last<br/>quote's time and price, which<br/>thresholds fired and when"]
+    stateStore["<b>AlertStateStore</b><br/>JSON, written whole,<br/>after each poll that changed it"]
+    engine --> stateStore --> stateFile[("~/Library/Application Support/<br/>Vettira/alert-state.json")]
 ```
 
 `UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
@@ -184,6 +189,13 @@ it; the update interval is from 10 seconds to an hour, and the staleness toleran
 it to `settings.corrupt.json` and starts from the defaults (an empty watchlist, 0.25% and
 0.40%, a 15-second interval and a 60-second tolerance). A field an older file lacks gets its default, so a new setting is added with
 `decodeIfPresent` and a default.
+
+`AlertStateStore` saves the alert engine's state as JSON in `alert-state.json`, next to the
+settings, in a format with a `version` (1), replacing the file whole on each save. It's a cache of
+what the engine remembers, so a relaunch doesn't alert again for a pullback it already alerted
+([alerts.md](alerts.md#saved-state)): a missing file is an empty state, and one that can't be
+read, isn't valid state or is another version is logged and alerts start afresh; the next save
+replaces it. A change to the state's format bumps the version rather than migrating it.
 
 ## The pipeline
 
@@ -301,7 +313,11 @@ quote is older than the tolerance: by default, a minute after the close.
 listed straight away and polled from the next poll, and one removed or disabled is dropped; new
 thresholds and a new staleness tolerance apply from the next quote (the tolerance to the snapshot
 it publishes at once), and a new interval from the wait after the next poll. The engine's state is `engineState`, `Codable`, and `init` takes it back,
-so the app can save it and a relaunch doesn't alert again for a pullback it already alerted.
+so a relaunch doesn't alert again for a pullback it already alerted. The monitor hands it to its
+`saveState` closure after each poll or settings change that changed it, and the app saves it with
+`AlertStateStore`: after every alert, then, and as of the last poll when the app quits. A symbol
+taken off the watchlist is dropped from it (`removeSymbols(notIn:)`), there and at launch, so the
+file doesn't grow with every symbol ever watched; a disabled one keeps its state.
 
 Its tests (`Tests/VettiraCoreTests/Monitor/`) drive it with a fake provider and a clock that only
 moves when the monitor waits, so no test waits on the wall clock or calls Yahoo.

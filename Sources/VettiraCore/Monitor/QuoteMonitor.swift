@@ -12,7 +12,8 @@ import Foundation
 ///
 /// The app reads it through two streams, each for one consumer, its shared state on the main
 /// actor: `snapshots`, the latest state after each poll or settings change, and `alerts`, every
-/// alert as it fires. The engine's state is `engineState`, for the app to save and hand back.
+/// alert as it fires. The engine's state is `engineState`; the monitor hands it to `saveState`
+/// each time a poll or a settings change changes it, for the app to save and hand back.
 public actor QuoteMonitor {
     /// The state after each poll and each settings change, starting with the state before the
     /// first poll. Only the latest is kept: a consumer that falls behind skips to it.
@@ -27,6 +28,9 @@ public actor QuoteMonitor {
     private let clock: MonitorClock
     private var settings: UserSettings
     private var engine: ReversalAlertEngine
+    private let saveState: @Sendable (ReversalAlertEngine.State) -> Void
+    /// The engine's state as `saveState` last had it.
+    private var savedState: ReversalAlertEngine.State
     /// The trading day of each symbol's high, so a high is shown only during its own session.
     private var highDays: [TickerSymbol: TradingDay] = [:]
     private var running = false
@@ -36,13 +40,16 @@ public actor QuoteMonitor {
 
     /// A monitor for `settings`' watchlist, at its update interval and with its alert settings,
     /// that hasn't polled yet. `engineState` is the alert engine's saved state, so alerts it
-    /// already sent aren't sent again.
+    /// already sent aren't sent again; what it holds for a symbol no longer on the watchlist is
+    /// dropped. `saveState` gets the engine's state after each poll or settings change that
+    /// changed it, to save for the next launch.
     public init(
         provider: any MarketDataProvider,
         settings: UserSettings,
         engineState: ReversalAlertEngine.State = .init(),
         calendar: MarketCalendar = .usEquities,
-        clock: MonitorClock = .system
+        clock: MonitorClock = .system,
+        saveState: @escaping @Sendable (ReversalAlertEngine.State) -> Void = { _ in }
     ) {
         (snapshots, snapshotSink) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
         (alerts, alertSink) = AsyncStream.makeStream(bufferingPolicy: .unbounded)
@@ -50,7 +57,11 @@ public actor QuoteMonitor {
         self.calendar = calendar
         self.clock = clock
         self.settings = settings
-        engine = ReversalAlertEngine(settings: settings.alertSettings, state: engineState, calendar: calendar)
+        var engine = ReversalAlertEngine(settings: settings.alertSettings, state: engineState, calendar: calendar)
+        engine.removeSymbols(notIn: Self.watched(settings))
+        self.engine = engine
+        self.saveState = saveState
+        savedState = engineState
         let waiting = settings.watchlist.entries.filter(\.isEnabled).map { ($0.symbol, SymbolSnapshot(symbol: $0.symbol)) }
         snapshot = MonitorSnapshot(
             symbols: Dictionary(uniqueKeysWithValues: waiting), diagnostics: MonitorDiagnostics(source: provider.name))
@@ -84,10 +95,13 @@ public actor QuoteMonitor {
 
     /// New settings: a newly enabled symbol is polled from the next poll, new thresholds and a
     /// new staleness tolerance apply from the next quote (and the tolerance to this snapshot), and
-    /// a new update interval from the wait after the next poll.
+    /// a new update interval from the wait after the next poll. A symbol taken off the watchlist
+    /// is dropped from the engine's state, and the state saved; a disabled one keeps its state.
     public func update(settings: UserSettings) {
         self.settings = settings
         engine.settings = settings.alertSettings
+        engine.removeSymbols(notIn: Self.watched(settings))
+        saveIfChanged()
         refresh(at: clock.now())
         snapshotSink.yield(snapshot)
     }
@@ -127,8 +141,16 @@ public actor QuoteMonitor {
         snapshot.diagnostics.pollDelay = delay
         snapshot.diagnostics.nextPoll = now.addingTimeInterval(delay)
         refresh(at: now)
+        saveIfChanged()
         snapshotSink.yield(snapshot)
         return delay
+    }
+
+    /// Hands the engine's state to `saveState` if it changed since it last did.
+    private func saveIfChanged() {
+        guard engine.state != savedState else { return }
+        savedState = engine.state
+        saveState(engine.state)
     }
 
     /// The wait before the next poll. In regular hours, the rest of the update interval since this
@@ -216,6 +238,11 @@ public actor QuoteMonitor {
         }
         snapshot.symbols = symbols
         highDays = highDays.filter { symbols[$0.key] != nil }
+    }
+
+    /// Every symbol on the settings' watchlist, enabled or not.
+    private static func watched(_ settings: UserSettings) -> Set<String> {
+        Set(settings.watchlist.entries.map(\.symbol.rawValue))
     }
 
     private var enabledSymbols: [TickerSymbol] {

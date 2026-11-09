@@ -40,7 +40,8 @@ private struct Harness {
     init(
         _ symbols: [String] = ["SPY"], disabled: Set<String> = [], at start: Date = at("10:00:00"),
         replies: [MockProvider.Reply] = [], secondsPerSymbol: TimeInterval = 1,
-        monitorSettings: MonitorSettings = .standard, engineState: ReversalAlertEngine.State = .init()
+        monitorSettings: MonitorSettings = .standard, engineState: ReversalAlertEngine.State = .init(),
+        saveState: @escaping @Sendable (ReversalAlertEngine.State) -> Void = { _ in }
     ) {
         clock = MonitorTestClock(at: start)
         provider = MockProvider(clock: clock, replies: replies, secondsPerSymbol: secondsPerSymbol)
@@ -48,7 +49,7 @@ private struct Harness {
         settings.monitorSettings = monitorSettings
         monitor = QuoteMonitor(
             provider: provider, settings: settings,
-            engineState: engineState, clock: clock.monitorClock)
+            engineState: engineState, clock: clock.monitorClock, saveState: saveState)
     }
 
     /// Runs the monitor for `count` polls, ending in the wait after the last.
@@ -341,6 +342,90 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
         #expect(await second.state("SPY")?.high == SessionHigh(price: 100, kind: .observed))
     }
 
+    @Test func theEngineStateIsSavedAfterAnAlertAndARelaunchFromTheFileDoesNotRepeatIt() async throws {
+        try await withAlertStateDirectory { store in
+            let first = Harness(replies: [MockProvider.prices(["SPY": 100]), MockProvider.prices(["SPY": 99.7])],
+                                saveState: { try? store.save($0) })
+            await first.poll(2)
+            #expect(await first.state("SPY")?.lastAlert?.signal == .early)
+            let saved = await first.monitor.engineState
+            let loaded1 = try store.load()
+            #expect(loaded1 == saved)
+
+            let restored = try store.load()
+            let second = Harness(at: at("10:01:30"), replies: [MockProvider.prices(["SPY": 99.7])],
+                                 engineState: restored)
+            await second.poll()
+            #expect(await second.state("SPY")?.lastAlert == nil)
+            #expect(await second.state("SPY")?.high == SessionHigh(price: 100, kind: .observed))
+        }
+    }
+
+    @Test func aRelaunchOnTheNextSessionAlertsAgain() async throws {
+        try await withAlertStateDirectory { store in
+            let tuesday = Harness(replies: [MockProvider.prices(["SPY": 100]), MockProvider.prices(["SPY": 99.7])],
+                                  saveState: { try? store.save($0) })
+            await tuesday.poll(2)
+            #expect(await tuesday.state("SPY")?.lastAlert?.signal == .early)
+
+            let restored = try store.load()
+            let wednesday = Harness(
+                at: at("10:00:00", on: "2026-11-11"),
+                replies: [MockProvider.prices(["SPY": 100]), MockProvider.prices(["SPY": 99.7])],
+                engineState: restored)
+            await wednesday.poll(2)
+            #expect(await wednesday.state("SPY")?.lastAlert?.signal == .early)
+            #expect(await wednesday.state("SPY")?.lastAlert?.quoteTimestamp == at("10:00:14", on: "2026-11-11"))
+        }
+    }
+
+    @Test func aSymbolTakenOffTheWatchlistIsDroppedFromTheSavedState() async throws {
+        try await withAlertStateDirectory { store in
+            let harness = Harness(["SPY", "QQQ", "DIA"], saveState: { try? store.save($0) })
+            await harness.poll()
+            let loaded2 = try store.load()
+            #expect(loaded2.trackedSymbols == ["SPY", "QQQ", "DIA"])
+
+            // QQQ is removed and DIA disabled: only QQQ's state goes.
+            var edited = settings(["SPY", "DIA"], disabled: ["DIA"])
+            await harness.monitor.update(settings: edited)
+            let loaded3 = try store.load()
+            #expect(loaded3.trackedSymbols == ["SPY", "DIA"])
+
+            try edited.watchlist.remove(symbol("DIA"))
+            await harness.monitor.update(settings: edited)
+            let loaded4 = try store.load()
+            #expect(loaded4.trackedSymbols == ["SPY"])
+        }
+    }
+
+    @Test func savedStateForASymbolNoLongerWatchedIsDroppedAtLaunch() async throws {
+        try await withAlertStateDirectory { store in
+            let before = Harness(["SPY", "QQQ"], saveState: { try? store.save($0) })
+            await before.poll()
+            let loaded5 = try store.load()
+            #expect(loaded5.trackedSymbols == ["SPY", "QQQ"])
+
+            // The watchlist lost QQQ while the app was closed.
+            let restored = try store.load()
+            let after = Harness(["SPY"], engineState: restored, saveState: { try? store.save($0) })
+            #expect(await after.monitor.engineState.trackedSymbols == ["SPY"])
+            await after.poll()
+            let loaded6 = try store.load()
+            #expect(loaded6.trackedSymbols == ["SPY"])
+        }
+    }
+
+    @Test func nothingIsSavedWhenTheStateDoesNotChange() async {
+        let saves = Saves()
+        // Saturday: the market is closed, so no quote reaches the engine.
+        let harness = Harness(at: at("12:00:00", on: "2026-11-14"), saveState: { saves.record($0) })
+        await harness.poll()
+        let afterFirst = saves.count
+        await harness.poll(3)
+        #expect(saves.count == afterFirst)
+    }
+
     @Test func aHighFromAnEarlierSessionIsNotShown() async {
         let harness = Harness(replies: [MockProvider.prices(["SPY": 100])])
         await harness.poll()
@@ -391,5 +476,24 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
     @Test(arguments: [9.9, 0, -15, 3601, .infinity, .nan])
     func anyOtherIntervalIsRejected(interval: TimeInterval) {
         #expect(throws: MonitorSettingsError.intervalOutOfRange) { try MonitorSettings(interval: interval) }
+    }
+}
+
+/// A store in a new temporary directory, removed when the test ends.
+private func withAlertStateDirectory(_ body: (AlertStateStore) async throws -> Void) async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: "vettira-tests-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try await body(AlertStateStore(directory: directory))
+}
+
+/// Counts the states the monitor hands over to save.
+private final class Saves: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _count = 0
+
+    var count: Int { lock.withLock { _count } }
+
+    func record(_ state: ReversalAlertEngine.State) {
+        lock.withLock { _count += 1 }
     }
 }

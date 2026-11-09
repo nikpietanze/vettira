@@ -15,9 +15,14 @@ public struct SettingsStore: Sendable {
 
     /// The app's store, in the user's Application Support directory.
     public static func applicationSupport() throws -> SettingsStore {
+        try SettingsStore(directory: applicationSupportDirectory())
+    }
+
+    /// The app's own directory in the user's Application Support: `~/Library/Application Support/Vettira/`.
+    public static func applicationSupportDirectory() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
-        return SettingsStore(directory: base.appending(path: Vettira.name, directoryHint: .isDirectory))
+        return base.appending(path: Vettira.name, directoryHint: .isDirectory)
     }
 
     public var fileURL: URL { directory.appending(path: Self.fileName) }
