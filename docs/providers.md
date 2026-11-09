@@ -113,3 +113,21 @@ response.
 | `noUsableQuote` | The provider returned these symbols with no usable price or quote time. In a batch they're listed in `unusableSymbols`; Test Connection throws it | The symbol may be halted or newly listed; check again later |
 | `malformedResponse` | The response couldn't be read: not the expected JSON, or an unexpected status | Try later; if it persists, the provider may have changed its responses, so report it |
 | `unavailable` | No network, or the provider had a server error (HTTP 5xx) | Check the connection; otherwise try later |
+
+## The demo provider
+
+`DemoProvider` makes up prices, so the app can be tried and checked without calling Yahoo. The
+app uses it only in a Debug build launched with `--demo` ([the README](../README.md) and
+[architecture.md](architecture.md#the-app) say how); a release build
+always uses Yahoo's. Its name, "Demo (made-up prices)", is every quote's source, so the popover,
+the dashboard and each notification say the prices aren't real.
+
+Each symbol starts at its own base price, from 100 to 499 and the same on every run, and moves
+one step per poll through a fixed path, in percent above the base: 0, 0.10, 0.20, 0.30, 0.15,
+0.00, −0.15, −0.10, then it holds at −0.10. Its high, the observed one, is 0.30% above the base,
+so with the default thresholds the sixth poll is 0.30% below it (an early warning), the seventh
+0.45% (a stronger warning), and nothing alerts after that. Each quote is timestamped at the
+monitor's clock, in the regular session, with no session high. The app moves the monitor's clock
+into the regular session (`DemoProvider.regularHoursOffset`), to 30 minutes after the open of
+the session the moment belongs to, so the demo alerts at any time of day, and polls every 10
+seconds.

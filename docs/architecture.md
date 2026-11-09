@@ -19,21 +19,101 @@ flowchart LR
 
 | Target | Where | What it is |
 |---|---|---|
-| `VettiraCore` | `Sources/VettiraCore/` | The logic: quotes and the market-data provider protocol (`Providers/`), the market session and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), the quote monitor that polls and publishes (`Monitor/`), local storage (`Storage/`) |
+| `VettiraCore` | `Sources/VettiraCore/` | The logic: quotes and the market-data provider protocol (`Providers/`), the market session and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), the quote monitor that polls and publishes (`Monitor/`), what the menu bar and its popover show (`Display/`), notifications' wording and delivery (`Notifications/`), local storage (`Storage/`), a Debug run's launch arguments (`LaunchOptions`) |
 | `VettiraCoreTests` | `Tests/VettiraCoreTests/` | Its tests, on recorded and mock quotes |
-| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): a `MenuBarExtra` and a dashboard `Window`. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, menu bar only (`LSUIElement`), so it has no Dock icon |
+| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): an `NSStatusItem` with an `NSPopover`, and a dashboard window, each hosting SwiftUI views. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, menu bar only (`LSUIElement`), so it has no Dock icon |
 
 The Xcode project is generated, never committed: `cd App && xcodegen`, then open
 `App/Vettira.xcodeproj`.
 
 ## The app
 
-The menu-bar item is the app: it runs until the user picks **Quit** from its menu. The dashboard is
-a separate `Window` scene the menu opens (**Open Dashboard**); closing it leaves the menu-bar item,
-and monitoring, running. Monitoring will belong to the app's shared state, not to the dashboard's
-views, so it doesn't stop or restart when the window closes or opens.
+The menu-bar item is the app: it runs until the user picks **Quit**. `MenuBarController`
+(`App/Vettira/MenuBarController.swift`) puts it in the menu bar as an `NSStatusItem` whose button
+toggles a transient `NSPopover`, and the popover's **Open Dashboard** opens the dashboard window;
+both host SwiftUI views (`NSHostingController`). Closing the popover or the dashboard leaves the
+menu-bar item, and monitoring, running.
 
-So far the app is the shell: a menu with Open Dashboard and Quit, and an empty dashboard.
+Why AppKit rather than SwiftUI's `MenuBarExtra`: a window-style `MenuBarExtra` (the kind that
+shows a popover rather than a menu) opens only on a real mouse event, so neither accessibility
+(VoiceOver, UI scripts) nor the app itself can open it. The status item's button action is the
+one a click, an accessibility press and VoiceOver all take, and the button's accessibility is the
+app's to set.
+
+```mermaid
+flowchart LR
+    monitor["<b>QuoteMonitor</b><br/>(VettiraCore)"]
+    state["<b>AppState</b><br/>@Observable, main actor,<br/>owned by the App:<br/>settings, latest snapshot,<br/>notification and login-item status"]
+    delivery["<b>AlertDelivery</b><br/>asks for permission once,<br/>posts each alert"]
+    center["UNUserNotificationCenter"]
+    controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus"]
+    popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows, ConnectionHealth"]
+    dashboard["<b>DashboardView</b><br/>in a window:<br/>SymbolRows, ConnectionHealth"]
+    monitor -- snapshots --> state
+    monitor -- alerts --> state
+    state --> delivery --> center
+    state --> controller
+    controller -- click --> popover
+    popover -- Open Dashboard --> dashboard
+    state --> popover
+    state --> dashboard
+```
+
+**The app's state.** `AppState` (`App/Vettira/AppState.swift`) is `@Observable`, on the main
+actor, and owned by the app's delegate (`App/Vettira/VettiraApp.swift`) from launch until Quit,
+not by a view. At launch it loads the settings
+(`SettingsStore.applicationSupport()`), starts the `QuoteMonitor` on Yahoo Finance's provider,
+and reads both of its streams for as long as the app runs: each snapshot replaces the last, and
+each alert goes to `AlertDelivery`. The menu bar (which redraws as the state it reads changes),
+the popover and the dashboard only read it,
+so opening or closing a window changes nothing, and reopening the dashboard shows the same state.
+It also moves its own clock every 5 seconds, so the menu bar turns stale on time between polls,
+and the popover and dashboard redraw every second while they're open, so data ages count up.
+
+**What it shows.** What the views show is worked out in `VettiraCore` (`Display/`), so it's
+tested without a UI:
+
+| Type | What it is |
+|---|---|
+| `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls |
+| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, high and whether it's the session or the observed high, change from the high, data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), and the last warning this session. Clicking one shows it in the menu bar |
+| `ConnectionHealth` | Waiting, connected, outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
+
+The menu-bar item's accessibility label (its description) is always "Vettira", whatever it
+shows, so VoiceOver names it and UI scripts can find it, and its accessibility value is the status
+in full, which changes with it. Its accessibility title stays the text it shows (the ticker and
+price): macOS reports a status item's title from its button's text.
+
+**Notifications.** `AlertDelivery` (`Sources/VettiraCore/Notifications/`) posts each alert
+through `UNUserNotificationCenter`, with a sound unless the user turned it off (**Alert sound**
+in the popover, saved in the settings). It asks for permission at launch when a symbol is
+monitored, the first moment an alert can come, or at the first alert otherwise; the system asks
+the user once. When notifications are off, alerts only show in the menu bar and the popover, and
+the popover says so with a button to System Settings. `AlertNotification` words it as a possible
+reversal, never advice: the ticker, the price, the high and its kind, the drop from the high, the
+warning and its threshold, and the quote's own time and age:
+
+> **SPY: possible reversal, not confirmed**<br/>
+> Early warning (0.25% threshold)<br/>
+> 512.30 is 0.30% below the observed high of 513.84. Quote at 10:31:05 EST, 5 s old, from Yahoo
+> Finance (unofficial).
+
+Banners show even while Vettira's popover or dashboard is open (`NotificationPresenter`).
+
+**Launch at Login** is a switch in the popover, off until the user turns it on. It registers the
+app with `SMAppService.mainApp`; when macOS wants the user to approve it, the popover says so and
+opens Login Items.
+
+**Debug launch options.** A Debug build reads its launch options (`LaunchOptions`, in
+`VettiraCore`), each as a launch argument or an environment variable: `--demo`
+(`VETTIRA_DEMO=1`), for the demo provider's made-up prices
+([providers.md](providers.md#the-demo-provider)) on a clock moved into regular hours, and
+`--settings-dir <path>` (`VETTIRA_SETTINGS_DIR`), for a settings file somewhere other than
+Application Support, so the app can be run and checked without calling Yahoo or touching the
+user's settings. Either one makes the run a check, whose alerts go only to the log
+(`LogNotificationCenter`, each notification's full text) and which never asks for notification
+permission, unless it's also launched with `--notify` (`VETTIRA_NOTIFY=1`). Release builds ignore
+them all.
 
 ## Storage
 
@@ -41,14 +121,15 @@ What the user sets up stays on their Mac, in one file, as [PRIVACY.md](../PRIVAC
 
 ```mermaid
 flowchart LR
-    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds"]
+    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>notification sound"]
     store["<b>SettingsStore</b><br/>JSON, written whole"]
     settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
 ```
 
 `UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
 `PullbackThresholds`; `SettingsStore` saves it as JSON in
-`~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save.
+`~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save. It
+also holds whether notifications play a sound.
 Input is checked where it comes in, into types that can't hold a bad value: a `TickerSymbol` is
 trimmed, uppercased, 1 to 15 of `A-Z 0-9 . - ^ =`; thresholds are each between 0 and 100
 percent, early below strong; the watchlist has each symbol once, and its menu-bar symbol is on
@@ -68,7 +149,7 @@ flowchart LR
     poller["<b>QuoteMonitor</b><br/>polls the enabled symbols,<br/>one poll at a time, backing off;<br/>publishes snapshots and alerts<br/>(Monitor/)"]
     tracker["<b>SessionHighTracker</b><br/>per symbol: session or<br/>observed high, pullback<br/>(Session/)"]
     engine["<b>ReversalAlertEngine</b><br/>thresholds, once per high,<br/>rearming; never on stale,<br/>out-of-order or extended-hours<br/>quotes (Alerts/)"]
-    ui["<b>App</b><br/>notifications, menu bar,<br/>dashboard"]
+    ui["<b>App</b><br/>notifications, menu bar,<br/>popover, dashboard"]
     calendar["<b>MarketCalendar</b><br/>session state, trading day,<br/>open and close; NYSE<br/>holidays (Session/)"]
     provider --> poller --> tracker --> engine --> ui
     calendar -. session .-> tracker
@@ -92,8 +173,9 @@ early closes. So are the session-high tracker and the alert engine: per symbol, 
 rejects a quote that isn't fresh, in order and in regular hours, keeps the session or observed
 high, and fires each threshold once per high-water-mark cycle, with a `Codable` state the app can
 save. [alerts.md](alerts.md) describes the session rules, the years the calendar covers, and when
-alerts fire. The monitor is built too ([below](#polling)); the app's menu bar, notifications and
-dashboard are still to come.
+alerts fire. The monitor is built too ([below](#polling)), and so are the app's menu bar,
+popover and notifications ([above](#the-app)); the dashboard's full table and settings are still
+to come.
 
 An alert is a possible, unconfirmed reversal, never advice or an instruction to sell, and its
 thresholds are illustrative. The spec is [spec.md](spec.md).

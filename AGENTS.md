@@ -11,9 +11,12 @@ How to contribute is [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - `Package.swift`, `Sources/VettiraCore/`: the app's logic, Foundation only, so it tests
   without a UI: quotes and the `MarketDataProvider` protocol (`Providers/`), the market session
-  and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), and local storage
-  (`Storage/`). Tests in `Tests/VettiraCoreTests/`, with recorded and mock quotes.
-- `App/`: the macOS app (`App/Vettira/`): SwiftUI `MenuBarExtra`, the dashboard window, settings,
+  and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), the quote monitor
+  that polls the watchlist (`Monitor/`), what the menu bar and its popover show (`Display/`),
+  notifications' wording and delivery (`Notifications/`), and local storage (`Storage/`). Tests in
+  `Tests/VettiraCoreTests/`, with recorded and mock quotes.
+- `App/`: the macOS app (`App/Vettira/`): the menu-bar item (`NSStatusItem`) and its `NSPopover`,
+  the dashboard window, SwiftUI views in each, settings,
   Keychain, notifications. `App/project.yml` is its XcodeGen project; the `.xcodeproj` is
   generated, never committed.
 - `docs/`: the spec, the architecture, and the alerts and providers docs. `PRIVACY.md` and

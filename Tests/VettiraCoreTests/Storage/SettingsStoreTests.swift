@@ -20,6 +20,7 @@ private func edited() throws -> UserSettings {
     try settings.watchlist.setThresholds(PullbackThresholds(early: 0.5, strong: 0.75), for: ticker("SPY"))
     try settings.watchlist.showInMenuBar(ticker("DIA"))
     settings.defaultThresholds = try PullbackThresholds(early: 0.3, strong: 0.6)
+    settings.notificationSound = false
     return settings
 }
 
@@ -74,6 +75,7 @@ private func edited() throws -> UserSettings {
             .write(to: store.fileURL)
         let settings = try store.load()
         #expect(settings.defaultThresholds == .standard)
+        #expect(settings.notificationSound)
         #expect(settings.watchlist.entries.map(\.symbol.rawValue) == ["SPY", "QQQ"])
         #expect(settings.watchlist.menuBarSymbol == ticker("SPY"))
         #expect(settings.watchlist.entry(for: ticker("SPY"))?.isEnabled == true)

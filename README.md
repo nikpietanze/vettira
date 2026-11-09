@@ -13,8 +13,8 @@ Vettira is free, open source and local-first. It watches your stock and ETF watc
 menu bar and notifies you when a price falls from its session high by a threshold you set.
 
 > **Status: in progress.** The logic (quotes, market sessions, session highs, alerts and
-> settings) is built and tested. The menu bar, the dashboard and notifications are next, so the
-> app doesn't watch anything yet.
+> settings), the menu bar and notifications are built. The dashboard's table and watchlist editing
+> are next, so for now the watchlist is set in its settings file.
 
 ## What it's for, and what it isn't
 
@@ -65,7 +65,15 @@ cd App && xcodegen generate && open Vettira.xcodeproj
 ```
 
 Run the `Vettira` scheme. The app lives in the menu bar; closing its dashboard leaves it running
-until you pick Quit. Contributing: [CONTRIBUTING.md](https://github.com/nikpietanze/vettira/blob/main/CONTRIBUTING.md).
+until you pick Quit. The menu bar shows one symbol's price and its change from the high; click it
+for every symbol's price, high, pullback and data age, and the connection's health. A pullback
+past a threshold sends a notification, worded as a possible reversal, never advice.
+Contributing: [CONTRIBUTING.md](https://github.com/nikpietanze/vettira/blob/main/CONTRIBUTING.md).
+
+To try it without calling Yahoo, run a Debug build with `--demo` (made-up prices) and
+`--settings-dir <folder>` (a settings file other than your own). Its alerts then go only to the
+app's log, not to Notification Center, unless you add `--notify`:
+`open Vettira.app --args --demo --settings-dir /tmp/vettira-demo`.
 
 ## Privacy
 

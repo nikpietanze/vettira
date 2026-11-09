@@ -9,6 +9,8 @@ public struct UserSettings: Equatable, Sendable {
     public var watchlist = Watchlist()
     /// The thresholds for every symbol that doesn't set its own.
     public var defaultThresholds = PullbackThresholds.standard
+    /// Whether an alert's notification plays a sound. On by default.
+    public var notificationSound = true
 
     public init() {}
 
@@ -20,7 +22,7 @@ public struct UserSettings: Equatable, Sendable {
 }
 
 extension UserSettings: Codable {
-    private enum CodingKeys: String, CodingKey { case watchlist, defaultThresholds }
+    private enum CodingKeys: String, CodingKey { case watchlist, defaultThresholds, notificationSound }
 
     // A field an older file doesn't have gets its default. Add new fields the same way.
     public init(from decoder: any Decoder) throws {
@@ -28,5 +30,6 @@ extension UserSettings: Codable {
         watchlist = try container.decodeIfPresent(Watchlist.self, forKey: .watchlist) ?? Watchlist()
         defaultThresholds = try container.decodeIfPresent(PullbackThresholds.self, forKey: .defaultThresholds)
             ?? .standard
+        notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
     }
 }

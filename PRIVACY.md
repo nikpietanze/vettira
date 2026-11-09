@@ -8,10 +8,20 @@ it collects nothing about you and sends nothing about you anywhere.
 Everything stays on your Mac, in one file:
 `~/Library/Application Support/Vettira/settings.json`, plain JSON. It holds your watchlist (its
 symbols and their order, which are pinned or enabled, each symbol's own thresholds, and the
-symbol the menu bar shows) and your default thresholds. Nothing else.
+symbol the menu bar shows), your default thresholds, and whether alerts play a sound. Nothing
+else.
 
 If the file isn't valid settings, Vettira moves it to `settings.corrupt.json` in the same folder
 and starts from the defaults, so the old file isn't overwritten.
+
+## Notifications and Launch at Login
+
+Alerts are local macOS notifications: Vettira posts them on your Mac through the system's
+notification center, and they go nowhere else. macOS asks you once whether to allow them, and you
+can change that in System Settings, Notifications.
+
+Launch at Login is off until you turn it on in Vettira's menu. Turning it on registers Vettira as a
+login item with macOS, which you can see and remove in System Settings, General, Login Items.
 
 ## What it sends
 

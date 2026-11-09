@@ -43,7 +43,7 @@ Scope: **US regular trading hours (09:30–16:00 America/New_York)**, with a new
 
 ## Architecture / implementation
 
-- **Swift 6 + SwiftUI**, `MenuBarExtra` for menu-bar presentation; a separately controlled `Window`/`WindowGroup` for dashboard. Shared `@Observable`/actor-backed application state; monitoring owned by the app/service layer, **not the dashboard view lifecycle**.
+- **Swift 6 + SwiftUI**, in an `NSStatusItem` with an `NSPopover` for menu-bar presentation (a window-style `MenuBarExtra` opens only on a real mouse event, so accessibility and UI tests can't open it); a separately controlled window for the dashboard. Shared `@Observable`/actor-backed application state; monitoring owned by the app/service layer, **not the dashboard view lifecycle**.
 - `MarketDataProvider` → normalized quote stream/poller → per-symbol `SessionHighTracker` → `ReversalAlertEngine` → `UNUserNotificationCenter` + sound → menu bar/dashboard.
 - The MVP's data source needs no API key. Any key a later provider needs is stored in the **macOS Keychain** only, never in plaintext preferences, logs, crash reports, or the repo. Save watchlist, thresholds, and UI preferences in local app storage. No telemetry or cloud dependency by default. No trading credentials required.
 - Make provider calls light across the watchlist (one request per enabled symbol per poll, one at a time), implement reconnect/retry, rate-limit handling, and basic diagnostics (last received time, polling cadence, errors, source).
