@@ -21,7 +21,7 @@ flowchart LR
 |---|---|---|
 | `VettiraCore` | `Sources/VettiraCore/` | The logic: quotes and the market-data provider protocol (`Providers/`), the market session and session-high tracking (`Session/`), the reversal alert engine (`Alerts/`), the quote monitor that polls and publishes (`Monitor/`), what the menu bar and its popover show (`Display/`), notifications' wording and delivery (`Notifications/`), local storage (`Storage/`), a Debug run's launch arguments (`LaunchOptions`) |
 | `VettiraCoreTests` | `Tests/VettiraCoreTests/` | Its tests, on recorded and mock quotes |
-| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): an `NSStatusItem` with an `NSPopover`, a dashboard window and a Settings window, each hosting SwiftUI views. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, a menu-bar app (`LSUIElement`): it shows in the Dock only while one of its windows is open |
+| `Vettira` | `App/Vettira/` | The app, from `App/project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen): an `NSStatusItem` with an `NSPopover`, a dashboard window and a Settings window, each hosting SwiftUI views. Bundle ID `com.andiamosoftware.vettira`, macOS 14 and later, a menu-bar app (`LSUIElement`): it shows in the Dock only while one of its windows is open. Release builds are stripped, their debug symbols in a dSYM beside the app |
 
 The Xcode project is generated, never committed: `cd App && xcodegen`, then open
 `App/Vettira.xcodeproj`.

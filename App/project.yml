@@ -12,6 +12,16 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+  configs:
+    # The Release build is the one that ships, so it keeps no path from the machine that built it.
+    # The linker records each object file's path and source folder in the binary's symbol table, and
+    # stripping drops them; the debug symbols go to the dSYM beside the app, never into the zip.
+    # A #filePath string is the path the compiler was given, which no prefix map changes, so the app
+    # never uses #filePath (#fileID is fine). Debug builds keep their paths.
+    Release:
+      DEPLOYMENT_POSTPROCESSING: YES
+      STRIP_INSTALLED_PRODUCT: YES
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 targets:
   Vettira:
     type: application
