@@ -17,7 +17,11 @@ menu bar and notifies you when a price falls from its session high by a threshol
 > built. There's no release to download yet: [build it](#build-and-run) with Xcode.
 
 <p align="center">
-  <img src="docs/assets/popover.png" alt="Vettira's menu-bar popover: three symbols with their price, observed high, change from the high and quote age, the connection's health, and the Open Dashboard, Settings and Quit buttons" width="386">
+  <img src="docs/assets/menu-bar.png" alt="Vettira's menu-bar item: its icon, a small chart of SPY's price today above the dotted line of the previous close, and SPY's price and change from its high" width="201">
+</p>
+
+<p align="center">
+  <img src="docs/assets/popover.png" alt="Vettira's menu-bar popover: three symbols with today's chart, their price, observed high, change from the high, quote age and the warning this session, the connection's health, two switches, and the Open Dashboard, Settings and Quit buttons" width="360">
 </p>
 
 <p align="center">
@@ -25,11 +29,12 @@ menu bar and notifies you when a price falls from its session high by a threshol
 </p>
 
 <p align="center">
-  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, alert sound and Launch at Login" width="420">
+  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and the switch for the chart in the menu bar" width="420">
 </p>
 
-<p align="center"><sub>The menu-bar popover, the dashboard and Settings, from a demo run: the
-prices are made up (their source reads "Demo (made-up prices)"), not Yahoo Finance's.</sub></p>
+<p align="center"><sub>The menu-bar item with today's chart, its popover, the dashboard and
+Settings, from a demo run: the prices are made up (their source reads "Demo (made-up prices)"),
+not Yahoo Finance's, and the times are New York's, the exchange's (EST).</sub></p>
 
 ## What it's for, and what it isn't
 
