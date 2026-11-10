@@ -25,7 +25,8 @@ struct SettingsView: View {
                 }
                 Note("How often Vettira asks for quotes in regular hours: one request for each symbol that's on, "
                     + "one at a time. Outside regular hours it checks every \(DisplayFormat.duration(monitor.closedInterval)), "
-                    + "and after an error it waits longer each time.")
+                    + "and after an error it waits longer each time. While prices stream in regular hours, it asks "
+                    + "every \(DisplayFormat.duration(monitor.streamingInterval)) for the day's chart instead.")
                 let tolerance = state.settings.alertSettings.staleTolerance
                 Picker("Stale after", selection: Binding(
                     get: { tolerance }, set: { state.setStaleTolerance($0) })) {
@@ -50,8 +51,8 @@ struct SettingsView: View {
             }
             Section("Quotes") {
                 LabeledContent("Source", value: state.snapshot.diagnostics.source)
-                Note("Vettira reads Yahoo Finance's unofficial, undocumented JSON endpoints, which need no key or "
-                    + "account. Yahoo doesn't support or endorse them or Vettira, can change or block them at any "
+                Note("Vettira reads Yahoo Finance's unofficial, undocumented JSON endpoints, and in regular hours "
+                    + "its streaming quote feed, which need no key or account. Yahoo doesn't support or endorse them or Vettira, can change or block them at any "
                     + "time, and its terms govern your use of the data. Quotes may be delayed, and aren't real-time "
                     + "or consolidated.")
                 Link("Yahoo's Terms of Service", destination: Self.yahooTerms)
@@ -61,7 +62,7 @@ struct SettingsView: View {
             Section("Menu bar") {
                 Toggle("Show chart in menu bar", isOn: Binding(
                     get: { state.settings.showsChartInMenuBar }, set: { state.setShowsChartInMenuBar($0) }))
-                Note("A small chart of today's price, updated each poll, next to the menu-bar symbol: green when "
+                Note("A small chart of today's price, updated with each quote, next to the menu-bar symbol: green when "
                     + "it's up on the day, red when it's down, with the previous close as a dotted line. Up and "
                     + "down on the day, not advice. Turn it off for a narrower menu bar.")
             }

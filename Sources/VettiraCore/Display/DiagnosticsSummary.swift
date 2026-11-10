@@ -1,7 +1,8 @@
 import Foundation
 
-/// The dashboard's diagnostics: where quotes come from, how often Vettira updates, when data last
-/// came, when the next update is, and the last error, each as a label and a value.
+/// The dashboard's diagnostics: where quotes come from, how often Vettira updates, whether prices
+/// stream, when data last came, when the next update is, and the last error, each as a label and a
+/// value.
 public struct DiagnosticsSummary: Equatable, Sendable {
     public struct Item: Equatable, Sendable, Identifiable {
         public let label: String
@@ -20,10 +21,15 @@ public struct DiagnosticsSummary: Equatable, Sendable {
         } else {
             next = "Starting"
         }
+        let streaming = diagnostics.stream.map { status in
+            Item(label: "Streaming", value: Self.describe(status, monitor: monitor, now: now, time: time))
+        }
+        let regular = diagnostics.stream == nil ? "" : " (every \(DisplayFormat.duration(monitor.streamingInterval)) while prices stream)"
         items = [
             Item(label: "Source", value: diagnostics.source),
-            Item(label: "Update interval", value: "Every \(DisplayFormat.duration(monitor.interval)) in regular hours, "
+            Item(label: "Update interval", value: "Every \(DisplayFormat.duration(monitor.interval)) in regular hours\(regular), "
                 + "every \(DisplayFormat.duration(monitor.closedInterval)) outside them"),
+        ] + [streaming].compactMap { $0 } + [
             Item(label: "Stale after", value: DisplayFormat.duration(settings.alertSettings.staleTolerance)),
             Item(label: "Last received", value: diagnostics.lastReceived.map {
                 "\(time($0)), \(DisplayFormat.duration(now.timeIntervalSince($0))) ago"
@@ -33,5 +39,21 @@ public struct DiagnosticsSummary: Equatable, Sendable {
             Item(label: "Last error", value: diagnostics.lastError?.message ?? "None"),
             Item(label: "Failed updates in a row", value: "\(diagnostics.consecutiveFailures)"),
         ]
+    }
+
+    private static func describe(
+        _ status: StreamStatus, monitor: MonitorSettings, now: Date, time: (Date) -> String
+    ) -> String {
+        switch status {
+        case .off:
+            "Off: prices stream only in regular hours, for the symbols that are on"
+        case .connecting:
+            "Connecting"
+        case .live(let since):
+            "Live since \(time(since)): prices as they change, at most once a second"
+        case .reconnecting(let error, let retryAt):
+            "Reconnecting \(retryAt <= now ? "now" : "in \(DisplayFormat.duration(retryAt.timeIntervalSince(now)))"), "
+                + "updating every \(DisplayFormat.duration(monitor.interval)) meanwhile. \(error.message)"
+        }
     }
 }

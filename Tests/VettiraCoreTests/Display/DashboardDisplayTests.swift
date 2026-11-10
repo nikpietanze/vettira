@@ -57,6 +57,27 @@ private func values(_ summary: DiagnosticsSummary) -> [String: String] {
     #expect(shown["Next update"] == "Now")
 }
 
+@Test func withAStreamTheDiagnosticsSayHowItsDoing() {
+    var diagnostics = displaySnapshot([]).diagnostics
+    func shown(_ status: StreamStatus) -> [String: String] {
+        diagnostics.stream = status
+        return values(DiagnosticsSummary(diagnostics: diagnostics, settings: UserSettings(), now: nyTime("10:00:30"),
+                                         timeZone: newYork))
+    }
+    let live = shown(.live(since: nyTime("10:00:02")))
+    #expect(live["Update interval"]
+        == "Every 15 s in regular hours (every 1 min while prices stream), every 10 min outside them")
+    #expect(live["Streaming"] == "Live since 10:00:02 EST: prices as they change, at most once a second")
+    #expect(shown(.off)["Streaming"] == "Off: prices stream only in regular hours, for the symbols that are on")
+    #expect(shown(.connecting)["Streaming"] == "Connecting")
+    #expect(shown(.reconnecting(.blocked, retryAt: nyTime("10:00:50")))["Streaming"]
+        == "Reconnecting in 20 s, updating every 15 s meanwhile. \(ProviderError.blocked.message)")
+    #expect(shown(.reconnecting(.unavailable, retryAt: nyTime("10:00:30")))["Streaming"]?.hasPrefix("Reconnecting now,") == true)
+    diagnostics.stream = .connecting
+    let labels = DiagnosticsSummary(diagnostics: diagnostics, settings: UserSettings(), now: nyTime("10:00:30")).items.map(\.label)
+    #expect(labels.prefix(4) == ["Source", "Update interval", "Streaming", "Stale after"])
+}
+
 // MARK: Settings' choices
 
 @Test func theUpdateIntervalsRunFromTenSecondsToAnHour() {

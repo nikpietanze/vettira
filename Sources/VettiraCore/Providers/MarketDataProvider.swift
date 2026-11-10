@@ -1,14 +1,11 @@
 /// A source of quotes.
 ///
 /// Everything past the provider (polling, session highs, alerts, the app) depends on this protocol
-/// and on `Quote`, never on a particular provider, so another provider, a streaming one included,
-/// can be added without changing them.
+/// and on `Quote`, never on a particular provider, so another provider can be added without
+/// changing them. A provider is polled; prices pushed between polls come from a `QuoteStream`.
 public protocol MarketDataProvider: Sendable {
     /// The provider's name, shown as each quote's source and in Settings.
     var name: String { get }
-
-    /// Whether the provider pushes quotes as they change. When it doesn't, quotes are polled.
-    var streams: Bool { get }
 
     /// The latest quotes for `symbols`, fetched in as few requests as the provider allows.
     ///

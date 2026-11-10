@@ -11,7 +11,6 @@ import VettiraCore
 /// Answers Test Connection with what it's given, and counts the requests.
 private actor ScriptedProvider: MarketDataProvider {
     nonisolated let name = "Test provider"
-    nonisolated let streams = false
     private let reply: Result<QuoteBatch, ProviderError>
     private(set) var requests: [[String]] = []
 

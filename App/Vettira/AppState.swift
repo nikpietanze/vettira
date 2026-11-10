@@ -41,6 +41,9 @@ final class AppState {
 
     @ObservationIgnored private var store: SettingsStore?
     @ObservationIgnored private let monitor: QuoteMonitor
+    /// Streams prices between the monitor's polls in regular hours; `nil` for the demo's made-up
+    /// prices, which only poll.
+    @ObservationIgnored private let streamer: QuoteStreamer?
     /// The monitor's provider: Test Connection asks it too, so its request waits its turn behind
     /// the monitor's and keeps to the same pacing.
     @ObservationIgnored private let provider: any MarketDataProvider
@@ -71,10 +74,12 @@ final class AppState {
             let offset = DemoProvider.regularHoursOffset(at: Date())
             clock = MonitorClock(now: { Date() + offset }, sleep: MonitorClock.system.sleep)
             provider = DemoProvider(now: clock.now)
+            streamer = nil
             clockOffset = offset
         } else {
             clock = .system
             provider = YahooFinanceProvider()
+            streamer = QuoteStreamer(stream: YahooQuoteStream(), clock: clock)
             clockOffset = 0
         }
         self.provider = provider
@@ -304,6 +309,9 @@ final class AppState {
         if let presenter { UNUserNotificationCenter.current().delegate = presenter }
         let monitor = monitor
         Task { await monitor.run() }
+        if let streamer {
+            Task { await streamer.run(for: monitor) }
+        }
         Task { [weak self] in
             for await snapshot in monitor.snapshots {
                 self?.receive(snapshot)
@@ -324,11 +332,14 @@ final class AppState {
             await self?.prepareNotifications()
         }
         refreshSystemStatus()
-        log.notice("Monitoring started: quotes from \(self.snapshot.diagnostics.source, privacy: .public), settings in \(self.store?.directory.path ?? "nowhere", privacy: .public), notifications to \(self.presenter == nil ? "the log" : "the system", privacy: .public)")
+        log.notice("Monitoring started: quotes from \(self.snapshot.diagnostics.source, privacy: .public)\(self.streamer == nil ? "" : ", streamed in regular hours", privacy: .public), settings in \(self.store?.directory.path ?? "nowhere", privacy: .public), notifications to \(self.presenter == nil ? "the log" : "the system", privacy: .public)")
     }
 
     private func receive(_ snapshot: MonitorSnapshot) {
         let before = menuBar.title
+        if let stream = snapshot.diagnostics.stream, stream != self.snapshot.diagnostics.stream {
+            log.notice("Stream: \(String(describing: stream), privacy: .public)")
+        }
         self.snapshot = snapshot
         now = Date() + clockOffset
         menuBarChanged(from: before)

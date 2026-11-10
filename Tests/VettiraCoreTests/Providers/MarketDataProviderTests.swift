@@ -5,7 +5,6 @@ import VettiraCore
 /// A provider that answers from what it's given, the way the poller's tests will use one.
 private struct CannedProvider: MarketDataProvider {
     let name = "Canned"
-    let streams = false
     let known: [String: Double]
     let failure: ProviderError?
 

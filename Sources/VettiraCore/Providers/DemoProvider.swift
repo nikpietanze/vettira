@@ -16,7 +16,6 @@ import Foundation
 /// the warnings come when the path says.
 public actor DemoProvider: MarketDataProvider {
     public nonisolated let name = "Demo (made-up prices)"
-    public nonisolated let streams = false
 
     /// Percent above each symbol's base price, one step per poll.
     public static let path: [Double] = [0, 0.10, 0.20, 0.30, 0.15, 0.00, -0.15, -0.10]

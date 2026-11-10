@@ -15,7 +15,8 @@ public struct ConnectionHealth: Equatable, Sendable {
     }
 
     public let level: Level
-    /// What's happening: `Connected`, `Market closed`, or the error.
+    /// What's happening: `Connected` (`Connected, prices streaming` while the stream is live),
+    /// `Market closed`, or the error.
     public let headline: String
     /// When data last came and when the next update is, and for an error what to do.
     public let detail: String?
@@ -42,7 +43,7 @@ public struct ConnectionHealth: Equatable, Sendable {
         switch diagnostics.marketState {
         case .regular:
             level = .connected
-            headline = "Connected"
+            headline = diagnostics.stream?.isLive == true ? "Connected, prices streaming" : "Connected"
         case .preMarket:
             level = .closed
             headline = "Pre-market: alerts start at the open"

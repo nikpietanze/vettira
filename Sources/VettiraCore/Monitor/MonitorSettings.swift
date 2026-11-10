@@ -18,6 +18,11 @@ public struct MonitorSettings: Equatable, Sendable {
     /// interval when that's longer. A poll in the pre-market waits no later than the open.
     public var closedInterval: TimeInterval { max(interval, 600) }
 
+    /// The time between two polls in regular hours while prices stream, in seconds: a minute, or
+    /// the update interval when that's longer. Streamed prices come between them; the polls bring
+    /// the day's bars, the previous close and the session high.
+    public var streamingInterval: TimeInterval { max(interval, 60) }
+
     /// The longest backoff after errors, in seconds: 15 minutes, or the update interval when that's
     /// longer. A wait the provider asks for (`Retry-After`) is honoured even when it's longer.
     public var longestBackoff: TimeInterval { max(interval, 900) }

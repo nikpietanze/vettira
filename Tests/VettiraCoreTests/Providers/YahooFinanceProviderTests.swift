@@ -348,9 +348,8 @@ import VettiraCore
 
     // MARK: What it is
 
-    @Test func itPollsAndSaysItsUnofficial() {
+    @Test func itSaysItsUnofficial() {
         let yahoo = YahooFinanceProvider(http: FakeHTTPClient([]))
-        #expect(yahoo.streams == false)
         #expect(yahoo.name == "Yahoo Finance (unofficial)")
     }
 }

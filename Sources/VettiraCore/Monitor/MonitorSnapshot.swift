@@ -75,6 +75,9 @@ public struct MonitorDiagnostics: Equatable, Sendable {
     public var lastError: ProviderError?
     /// How many polls in a row have failed; the backoff grows with it.
     public var consecutiveFailures: Int
+    /// How the streaming connection is doing; `nil` when nothing streams, as with the demo's
+    /// made-up prices, or before the streamer first says.
+    public var stream: StreamStatus?
 
     public init(source: String) {
         self.source = source

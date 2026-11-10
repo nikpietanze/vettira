@@ -10,7 +10,6 @@ import Foundation
 /// extended-hours price, and never scrapes a page.
 public actor YahooFinanceProvider: MarketDataProvider {
     public nonisolated let name = "Yahoo Finance (unofficial)"
-    public nonisolated let streams = false
 
     /// Says plainly what's asking; never a browser's.
     static let userAgent = "Vettira (https://github.com/nikpietanze/vettira)"

@@ -2,8 +2,8 @@
 
 Vettira is a free, open-source, local-first macOS menu-bar app that watches a user's stock and
 ETF watchlist and notifies them when a price pulls back from its session high by a threshold they
-set. It reads quotes from Yahoo Finance's unofficial JSON endpoints, with no key and no account,
-never places orders, and never calls an alert advice. The MVP spec is
+set. It reads quotes from Yahoo Finance's unofficial JSON endpoints and streaming quote feed, with
+no key and no account, never places orders, and never calls an alert advice. The MVP spec is
 [docs/spec.md](docs/spec.md); the architecture is [docs/architecture.md](docs/architecture.md).
 How to contribute is [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -54,13 +54,17 @@ CI (`.github/workflows/ci.yml`) runs the same on GitHub's macOS runners, in fork
   "observed high". Data age is always visible; a stale, delayed, out-of-order or extended-hours
   quote never fires a price alert. Never promise real-time, tick-by-tick or consolidated data.
 - **Say where the data comes from.** Quotes come from Yahoo Finance's unofficial, undocumented
-  JSON endpoints, which Yahoo's terms govern ([docs/spec.md](docs/spec.md)). Never call them
-  official, documented, supported, licensed or endorsed, and never imply a licence to the data.
-  JSON quote endpoints only: no scraping of Yahoo's web pages.
+  JSON endpoints and its streaming quote feed (the WebSocket its own pages get prices from), which
+  Yahoo's terms govern ([docs/spec.md](docs/spec.md)). Never call them official, documented,
+  supported, licensed, endorsed or real-time, and never imply a licence to the data. Yahoo's JSON
+  quote endpoints and its streaming quote feed only: no scraping of Yahoo's web pages.
 - **Be a light client.** As few requests as the endpoint allows. Yahoo's chart endpoint takes
   one symbol, so it's one request per enabled symbol per poll, sent one at a time, never in
-  parallel, no faster than the poll interval, and at most one request a second overall. Back off
-  on 429s and errors. No bulk or historical downloads. A plain, honest User-Agent, never a
+  parallel, no faster than the poll interval, and at most one request a second overall. The
+  streaming feed is one long-lived connection for the whole watchlist, open only in regular hours
+  while a symbol is on, with its subscriptions changed on that connection; while it's live, polls
+  slow to once a minute. Back off on 429s, errors and dropped connections. No bulk or historical
+  downloads. A plain, honest User-Agent, never a
   browser's: never impersonate a browser to get around a block.
 - **Keys stay in the Keychain.** No developer key is ever bundled. Any key a future provider
   needs lives in the Keychain only, never in UserDefaults, files, logs, errors, fixtures or crash

@@ -48,12 +48,15 @@ not Yahoo Finance's, and the times are New York's, the exchange's (EST).</sub></
   is your own decision.
 - **Not a trading app.** It has no brokerage connection, needs no trading account, and places no
   orders.
-- **Not real-time.** Quotes come at an interval and may be delayed. Each shows its age, and a
-  stale or delayed quote never fires an alert.
+- **Not real-time.** Quotes come at an interval, or in regular hours as Yahoo's feed pushes them
+  (at most once a second), and may be delayed. Each shows its age, and a stale or delayed quote
+  never fires an alert.
 
 ## How it works
 
-Vettira asks for each enabled symbol's latest quote, one request at a time. It tracks each
+Vettira asks for each enabled symbol's latest quote, one request at a time, and in regular hours
+keeps one streaming connection open, so prices update as they change between those requests. It
+tracks each
 symbol's high for the US regular session (09:30 to 16:00 New York time, with holidays and early
 closes), and fires an alert when the drop from that high crosses a threshold. When the data
 doesn't include the session's high, Vettira uses the highest price it has seen, in its quotes and
@@ -63,12 +66,12 @@ More: [how alerts fire](docs/alerts.md) and [the architecture](docs/architecture
 
 ## Where the data comes from
 
-Quotes come from Yahoo Finance's **unofficial, undocumented** JSON endpoints, the ones its own web
-pages use. Vettira needs no key and no account for them, and there's nothing to set up. Read this
-before you use it:
+Quotes come from Yahoo Finance's **unofficial, undocumented** JSON endpoints and, in regular hours,
+its **unofficial, undocumented** streaming quote feed: the ones its own web pages use. Vettira needs
+no key and no account for them, and there's nothing to set up. Read this before you use it:
 
 - **Unofficial.** Yahoo has no public market-data API. It doesn't publish, document, support,
-  license or endorse these endpoints, or Vettira's use of them. Vettira isn't affiliated with
+  license or endorse these endpoints or the feed, or Vettira's use of them. Vettira isn't affiliated with
   Yahoo, and nothing here gives you any right to Yahoo's data.
 - **Yahoo's terms govern your use.** Yahoo's
   [Terms of Service](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) apply to the data
@@ -78,19 +81,23 @@ before you use it:
   follows them is between you and Yahoo, and you're responsible for it. Vettira is for personal,
   non-commercial use on your own Mac; it shows the data only to you, and you shouldn't
   redistribute or republish it.
-- **It can break or be blocked without notice.** Yahoo can change the endpoints, rate-limit them,
+- **It can break or be blocked without notice.** Yahoo can change the endpoints or the feed,
+  rate-limit them,
   or refuse requests from apps like Vettira, from your network or from your region, at any time.
   When it does, Vettira says so, and has no quotes and fires no alerts until they work again.
-- **Delayed, not consolidated, not tick-by-tick.** A quote may lag the exchange, and the endpoint
-  doesn't say by how much, so Vettira shows each quote's own time and age. It's Yahoo's view of
-  the market, not the consolidated tape across every exchange, and Vettira sees the latest price
-  each time it asks, not every trade between. Never rely on it as real-time data.
+- **Delayed, not consolidated, not tick-by-tick.** A quote may lag the exchange, and neither the
+  endpoints nor the feed says by how much, so Vettira shows each quote's own time and age. It's
+  Yahoo's view of the market, not the consolidated tape across every exchange, and Vettira sees
+  the latest price each time it asks, or at most once a second from the feed, not every trade.
+  Never rely on it as real-time data.
 
 Vettira is a light client: one request per enabled symbol per update, never in parallel, at most
-one a second, with a User-Agent that names Vettira (never a browser's), and it backs off when Yahoo
-rate-limits it or errs. It reads no web pages and downloads no history. **Test Connection**, in
-Settings, asks for one quote and says plainly what came back or what went wrong. The requests,
-the fields Vettira reads and each error it can show: [docs/providers.md](docs/providers.md).
+one a second, and in regular hours one streaming connection for the whole watchlist; while it's
+live, updates slow to once a minute. It sends a User-Agent that names Vettira (never a browser's),
+and backs off when Yahoo rate-limits it, errs or drops the connection. It reads no web pages and
+downloads no history. **Test Connection**, in Settings, asks for one quote and says plainly what
+came back or what went wrong. The requests, the fields Vettira reads and each error it can show:
+[docs/providers.md](docs/providers.md).
 
 ## Build and run
 
@@ -172,7 +179,7 @@ shows, storage) on recorded and mock quotes, and never call Yahoo.
 ## Using it
 
 The menu bar shows one symbol's price and its change from the high, with a small chart of its
-price today, updated each poll: green while it's above the previous close, red while it's below
+price today, updated with each quote: green while it's above the previous close, red while it's below
 (up or down on the day, not advice; turn it off in Settings for a narrower menu bar). Click it for
 every symbol's chart, price, high, pullback and data age, and the connection's health. A pullback past a threshold sends
 a notification, worded as a possible reversal, never advice. Closing a window leaves Vettira

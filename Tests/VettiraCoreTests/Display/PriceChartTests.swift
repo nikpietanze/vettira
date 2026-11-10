@@ -4,7 +4,7 @@ import VettiraCore
 
 // Expected values come from the issue: a small line chart of the day, its line green when the
 // price is above the previous close and red when below, with a faint previous-close line; gaps in
-// the provider's bars are gaps; the chart's words say "today's price, updated each poll", never
+// the provider's bars are gaps; the chart's words say "today's price, updated with each quote", never
 // live, and say up or down on the day, never buy or sell. Tuesday 10 November 2026 is a trading day.
 
 private func bar(_ time: String, _ close: Double?) -> PriceBar {
@@ -41,32 +41,32 @@ private func chart(_ quote: Quote, now: Date = nyTime("09:50:05")) -> PriceChart
     #expect(above.segments.flatMap { $0 }.allSatisfy { (0...1).contains($0.y) })
 }
 
-@Test func upOnTheDayIsUpAndSaysSoWithTodaysPriceUpdatedEachPoll() throws {
+@Test func upOnTheDayIsUpAndSaysSoWithTodaysPriceUpdatedWithEachQuote() throws {
     let chart = try #require(chart(day()))
     #expect(chart.direction == .up)
     #expect(chart.description
-        == "Chart of today's price for SPY, updated each poll: up 2.02% from the previous close of 99.00.")
+        == "Chart of today's price for SPY, updated with each quote: up 2.02% from the previous close of 99.00.")
 }
 
 @Test func downOnTheDayIsDown() throws {
     let chart = try #require(chart(day(price: 98)))
     #expect(chart.direction == .down)
     #expect(chart.description
-        == "Chart of today's price for SPY, updated each poll: down 1.01% from the previous close of 99.00.")
+        == "Chart of today's price for SPY, updated with each quote: down 1.01% from the previous close of 99.00.")
 }
 
 @Test func withinHalfAHundredthOfAPercentIsUnchanged() throws {
     let chart = try #require(chart(day(price: 99.004)))
     #expect(chart.direction == .flat)
     #expect(chart.description
-        == "Chart of today's price for SPY, updated each poll: unchanged from the previous close of 99.00.")
+        == "Chart of today's price for SPY, updated with each quote: unchanged from the previous close of 99.00.")
 }
 
 @Test func withoutAPreviousCloseThereIsNoDirectionOrLine() throws {
     let chart = try #require(chart(day(previousClose: nil)))
     #expect(chart.direction == .unknown)
     #expect(chart.previousCloseLevel == nil)
-    #expect(chart.description == "Chart of today's price for SPY, updated each poll.")
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote.")
 }
 
 @Test(arguments: [
@@ -81,7 +81,7 @@ func onALaterDayItsTheLastSessions(now: Date) throws {
 
 @Test func afterTheCloseTheSameDayItsStillToday() throws {
     let chart = try #require(chart(day(), now: nyTime("18:00:00")))
-    #expect(chart.description.hasPrefix("Chart of today's price for SPY, updated each poll"))
+    #expect(chart.description.hasPrefix("Chart of today's price for SPY, updated with each quote"))
 }
 
 @Test func aQuoteNoNewerThanTheLastBarIsntAddedToTheLine() throws {

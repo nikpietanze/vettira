@@ -2,7 +2,7 @@ import Foundation
 
 /// A small line chart of a symbol's day, for the menu bar and the popover: the day's bars and the
 /// latest price, the previous close as a faint line, and whether the price is up or down on the
-/// day. It's the price as of the last poll, never live.
+/// day. It's the price as of the latest quote, polled or streamed.
 ///
 /// The maths is here, so it's tested without a UI; the app only strokes the lines it gives and
 /// picks the colour its direction names: green for up on the day, red for down, never buy or sell.
@@ -35,7 +35,7 @@ public struct PriceChart: Equatable, Sendable {
     public let previousCloseLevel: Double?
     public let direction: Direction
     /// The chart in words, for VoiceOver and the tooltip: `Chart of today's price for SPY, updated
-    /// each poll: up 0.42% from the previous close of 510.10.`
+    /// with each quote: up 0.42% from the previous close of 510.10.`
     public let description: String
 
     /// The chart of `quote`'s bars, ending at its price when that's newer than the last bar, at
@@ -76,7 +76,7 @@ public struct PriceChart: Equatable, Sendable {
 
         // Today's when the bars are from the session of the date it is in New York.
         let what = day != nil && day == MarketCalendar.day(of: now)
-            ? "today's price for \(quote.symbol), updated each poll" : "the last session's price for \(quote.symbol)"
+            ? "today's price for \(quote.symbol), updated with each quote" : "the last session's price for \(quote.symbol)"
         guard let previousClose = quote.previousClose else {
             direction = .unknown
             description = "Chart of \(what)."

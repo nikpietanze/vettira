@@ -60,6 +60,7 @@ flowchart LR
     settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection,<br/>the menu bar's chart"]
     store["<b>SettingsStore</b>"]
     provider["<b>MarketDataProvider</b>"]
+    streamer["<b>QuoteStreamer</b><br/>on a QuoteStream"]
     monitor -- snapshots --> state
     monitor -- alerts --> state
     state --> delivery --> center
@@ -76,13 +77,16 @@ flowchart LR
     state -- each edit --> monitor
     state -- Test Connection --> provider
     monitor -- polls --> provider
+    monitor -- symbols to stream --> streamer
+    streamer -- prices, once a second --> monitor
 ```
 
 **The app's state.** `AppState` (`App/Vettira/AppState.swift`) is `@Observable`, on the main
 actor, and owned by the app's delegate (`App/Vettira/VettiraApp.swift`) from launch until Quit,
 not by a view. At launch it loads the settings
-(`SettingsStore.applicationSupport()`), starts the `QuoteMonitor` on Yahoo Finance's provider,
-and reads both of its streams for as long as the app runs: each snapshot replaces the last, and
+(`SettingsStore.applicationSupport()`), starts the `QuoteMonitor` on Yahoo Finance's provider
+and a `QuoteStreamer` on Yahoo's streaming feed (`streamer.run(for: monitor)`; a demo run has no
+streamer), and reads both of the monitor's streams for as long as the app runs: each snapshot replaces the last, and
 each alert goes to `AlertDelivery`. The menu bar (which redraws as the state it reads changes),
 the popover, the dashboard and Settings read it, and change the settings only through its
 methods, so opening or closing a window changes nothing, and reopening one shows the same state.
@@ -95,10 +99,10 @@ tested without a UI:
 | Type | What it is |
 |---|---|
 | `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls. Next to the text, the symbol's `PriceChart`, unless Settings turned it off (`showsChartInMenuBar`), and its accessibility value is the detail and then the chart in words |
-| `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated each poll: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
+| `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated with each quote: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
 | `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, its day's `PriceChart` (the popover draws it), high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
-| `ConnectionHealth` | Waiting, connected, outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
-| `DiagnosticsSummary` | The dashboard's diagnostics, label and value: the source, the update interval in and outside regular hours, the staleness tolerance, when quotes last came, the last and next update, the last error and how many updates in a row have failed |
+| `ConnectionHealth` | Waiting, connected ("Connected, prices streaming" while the stream is live), outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
+| `DiagnosticsSummary` | The dashboard's diagnostics, label and value: the source, the update interval in and outside regular hours (and while prices stream), the stream's state (off, connecting, live since when, or reconnecting in how long and why) when there's a stream, the staleness tolerance, when quotes last came, the last and next update, the last error and how many updates in a row have failed |
 | `ConnectionTestReport` | What Settings' Test Connection found: the quote with its time, age and source; that it's stale, in regular hours; the last session's price, while the market is closed; or the provider error's message and next step. `run(on:symbol:…)` asks the provider |
 | `SettingsChoices` | The update intervals (10 s to 1 h) and staleness tolerances Settings offers, the saved value always among them, and a warning when the tolerance is shorter than the interval, so quotes would turn stale between updates |
 | `DockPresence` | Which windows are open, so whether Vettira shows in the Dock |
@@ -116,9 +120,9 @@ draws the same chart before its price. The line is system green when the price i
 dotted line; green and red say up or down on the day, never buy or sell, and the line's place
 against the dotted one and the words in the accessibility value and tooltip say it without colour.
 The images draw each time they're shown, with the system's dynamic colours, so they follow a light
-or dark menu bar, popover and highlighted button. It's today's price, updated each poll: the bars
-come with each quote and each poll replaces them; the text still shows the data's age or that
-it's stale or closed.
+or dark menu bar, popover and highlighted button. It's today's price, updated with each quote: the bars
+come with each polled quote and each poll replaces them, and the line ends at the latest price,
+polled or streamed; the text still shows the data's age or that it's stale or closed.
 
 **Notifications.** `AlertDelivery` (`Sources/VettiraCore/Notifications/`) posts each alert
 through `UNUserNotificationCenter`, with a sound unless the user turned it off (**Alert sound**
@@ -231,12 +235,15 @@ app.
 ```mermaid
 flowchart LR
     provider["<b>MarketDataProvider</b><br/>Yahoo Finance's unofficial<br/>chart endpoint, no key,<br/>one symbol per request<br/>(Providers/)"]
+    stream["<b>QuoteStream</b><br/>Yahoo's unofficial streaming<br/>feed, one WebSocket,<br/>regular hours only<br/>(Providers/)"]
+    streamer["<b>QuoteStreamer</b><br/>one connection, subscriptions,<br/>reconnects, at most once<br/>a second (Monitor/)"]
     poller["<b>QuoteMonitor</b><br/>polls the enabled symbols,<br/>one poll at a time, backing off;<br/>publishes snapshots and alerts<br/>(Monitor/)"]
     tracker["<b>SessionHighTracker</b><br/>per symbol: session or<br/>observed high, pullback<br/>(Session/)"]
     engine["<b>ReversalAlertEngine</b><br/>thresholds, once per high,<br/>rearming; never on stale,<br/>out-of-order or extended-hours<br/>quotes (Alerts/)"]
     ui["<b>App</b><br/>notifications, menu bar,<br/>popover, dashboard"]
     calendar["<b>MarketCalendar</b><br/>session state, trading day,<br/>open and close; NYSE<br/>holidays (Session/)"]
     provider --> poller --> tracker --> engine --> ui
+    stream --> streamer --> poller
     calendar -. session .-> tracker
     calendar -. session .-> engine
     calendar -. regular hours or slow check .-> poller
@@ -248,9 +255,11 @@ The provider reads Yahoo Finance's unofficial, undocumented JSON chart endpoint
 symbol, one at a time and at most one a second, backing off when Yahoo rate-limits or errors.
 Yahoo doesn't support or endorse it, it can change or be blocked without notice, and Yahoo's
 terms govern its use; [spec.md](spec.md) says what that data is and isn't. The `MarketDataProvider`
-protocol keeps the rest of the pipeline independent of it, so a licensed or streaming provider
-can be added later. The protocol, the normalized quote, the provider's requests and its errors
-are in [providers.md](providers.md).
+protocol keeps the rest of the pipeline independent of it, so a licensed provider can be added
+later. In regular hours, prices also stream in between polls from Yahoo's unofficial streaming
+quote feed, through the `QuoteStream` protocol ([below](#streaming)). The protocols, the
+normalized quote, the provider's requests, the feed's messages and their errors are in
+[providers.md](providers.md).
 
 The market calendar is built: for any instant it gives the US regular session's state, the
 trading day it belongs to and that session's open and close, from NYSE's published holidays and
@@ -294,7 +303,10 @@ sequenceDiagram
 sends a poll's requests one after another, at least a second apart. The next poll waits for the
 update interval (`MonitorSettings.interval`, set in Settings: 15 seconds by default, from 10
 seconds to an hour) from the start of the last one, so with one symbol it's one request every 15
-seconds. The wait is
+seconds. While prices stream, the polls in regular hours come a minute apart instead
+(`MonitorSettings.streamingInterval`: a minute, or the interval when that's longer), and when the
+stream drops, the next poll comes forward to an interval after the last one started
+([Streaming](#streaming)). The wait is
 never shorter than the poll took, so Vettira is idle at least half the time: a 20-symbol
 watchlist, which takes about 20 seconds at one request a second, waits 20 seconds after each poll
 rather than polling back to back.
@@ -315,8 +327,9 @@ SwiftUI:
 
 | Stream | What | Buffer |
 |---|---|---|
-| `snapshots` | A `MonitorSnapshot` after each poll and each settings change, starting with the state before the first poll | The latest only: a consumer that falls behind skips to it |
+| `snapshots` | A `MonitorSnapshot` after each poll, each streamed update and each settings change, starting with the state before the first poll | The latest only: a consumer that falls behind skips to it |
 | `alerts` | Each `ReversalAlert` as it fires, once, for notifications | Every alert, none dropped |
+| `streamSymbols` | The symbols to stream, each time they change: the enabled ones in regular hours, none outside them, for the `QuoteStreamer` | The latest only |
 
 A snapshot holds, for each enabled symbol (`SymbolSnapshot`): the latest quote, its data age when
 the snapshot was taken, whether it's stale, the high and whether it's the session or the observed
@@ -324,7 +337,8 @@ high (only for the current trading day's session), the pullback, why the engine 
 latest quote if it couldn't, the last alert, and why the provider had no quote for it if it
 didn't. Its diagnostics (`MonitorDiagnostics`) are the source, the market state, when the last
 poll finished and when quotes last came back, the wait before the next poll and when it's due,
-the last error with its message and next step, and how many polls in a row have failed.
+the last error with its message and next step, how many polls in a row have failed, and the
+stream's status (`StreamStatus`) when there's a stream.
 
 **Stale data.** A symbol is stale when it has no quote yet, its quote is older than the staleness
 tolerance (`AlertSettings.staleTolerance`, 60 seconds by default, set in Settings), or the provider says it's
@@ -347,3 +361,65 @@ file doesn't grow with every symbol ever watched; a disabled one keeps its state
 
 Its tests (`Tests/VettiraCoreTests/Monitor/`) drive it with a fake provider and a clock that only
 moves when the monitor waits, so no test waits on the wall clock or calls Yahoo.
+
+## Streaming
+
+`QuoteStreamer` (`Sources/VettiraCore/Monitor/`) is an actor that keeps one connection to a
+`QuoteStream`, Yahoo's unofficial streaming quote feed in the app, open for the monitor, so prices
+in regular hours move about once a second instead of once an update. The app runs
+`streamer.run(for: monitor)` beside the monitor's `run()`: it reads the monitor's `streamSymbols`
+and hands each of its updates to `monitor.receive(_:)`. A demo run has no streamer.
+
+```mermaid
+sequenceDiagram
+    participant M as QuoteMonitor
+    participant S as QuoteStreamer
+    participant Y as QuoteStream
+    M->>S: streamSymbols: the enabled symbols, at the open's poll
+    S->>Y: connect, subscribe(symbols)
+    S-->>M: status: live
+    Note over M: polls a minute apart
+    loop as prices change
+        Y-->>S: next(): a regular-session Quote
+        Note over S: keeps each symbol's latest
+        S-->>M: quotes, at most once a second
+        Note over M: each through the alert engine
+    end
+    M->>S: streamSymbols: changes subscribe and unsubscribe
+    Y--xS: the connection drops
+    S-->>M: status: reconnecting at …
+    Note over M: next poll an interval after the last,<br/>then at the update interval
+    Note over S: waits 5 s, doubling to 5 min, then reconnects
+    M->>S: streamSymbols: none, at the first poll after the close
+    S->>Y: close
+```
+
+**What it streams.** The monitor says what to stream after each poll and each settings change:
+the enabled symbols while its last poll found the market in regular hours, and nothing otherwise.
+So the connection opens at the open's poll and closes at the first poll after the close, and
+closes, too, when no symbol is on. A change to the enabled symbols changes the subscriptions on
+the open connection, with no new connection.
+
+**Reconnecting.** When the connection fails (refused, dropped, unanswered, or a message it can't
+read), the streamer waits 5 seconds before reconnecting, doubling after each failure in a row up
+to 5 minutes, and at least what a rate limit asks; a price that comes through starts the wait
+over. Its status (`StreamStatus`: off, connecting, live, or reconnecting with the error and when)
+goes to the monitor, which shows it in the diagnostics.
+
+**At most once a second.** The streamer keeps the latest price for each symbol, a newer one
+replacing it and an older one that arrives late ignored, and hands them to the monitor the moment
+the first comes, then at most once a second.
+
+**How the monitor takes them.** Each streamed quote newer than the symbol's latest goes through
+the same alert engine as a polled one, so a stale, out-of-order or extended-hours one never
+alerts. It takes the day's bars, the previous close and the session high from the symbol's last
+quote from the same session, since the stream has none of its own, and none before that
+session's first poll. A poll whose quote is older than the latest streamed price leaves that price
+in place and brings only its day, and a poll whose quote is newer goes through the engine as
+before. While the stream is live, regular-hours polls come a minute apart; when it stops being
+live, the monitor cuts its wait short, so the next poll comes an update interval after the last
+one started, and polling carries on at the update interval until the stream is back.
+
+Its tests (`Tests/VettiraCoreTests/Monitor/`) drive it with a fake stream and a clock whose waits
+hold until the test moves it, and the feed's decoding is tested on recorded messages
+(`Tests/VettiraCoreTests/Providers/`), so no test connects to Yahoo.

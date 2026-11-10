@@ -152,7 +152,7 @@ private func spyWithDay(_ price: Double = 100.3, stale: Bool = false) -> SymbolS
     // The text keeps its sign; the chart adds its words to what the item says.
     #expect(shown.title == "SPY 100.30 \u{2212}0.20%")
     #expect(shown.accessibilityValue == "SPY 100.30 is 0.20% below its observed high of 100.50. Quote 5 s old. "
-        + "Chart of today's price for SPY, updated each poll: up 0.30% from the previous close of 100.00.")
+        + "Chart of today's price for SPY, updated with each quote: up 0.30% from the previous close of 100.00.")
 }
 
 @Test func aStaleOrClosedQuoteStillShowsItsChartWithTheStatusInTheText() {
@@ -303,6 +303,14 @@ func aSearchFindsRowsWhoseTickerHasIt(query: String, found: Bool) {
     #expect(health.level == .connected)
     #expect(health.headline == "Connected")
     #expect(health.detail == "Last received 5 s ago. Next update in 10 s.")
+}
+
+@Test func aLiveStreamSaysPricesAreStreaming() {
+    var diagnostics = displaySnapshot([]).diagnostics
+    diagnostics.stream = .live(since: nyTime("10:00:00"))
+    #expect(ConnectionHealth(diagnostics: diagnostics, now: nyTime("10:00:25")).headline == "Connected, prices streaming")
+    diagnostics.stream = .reconnecting(.unavailable, retryAt: nyTime("10:00:30"))
+    #expect(ConnectionHealth(diagnostics: diagnostics, now: nyTime("10:00:25")).headline == "Connected")
 }
 
 @Test func aFailingConnectionSaysWhatHappenedAndWhatToDo() {

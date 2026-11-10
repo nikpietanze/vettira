@@ -34,12 +34,15 @@ General, Login Items.
 
 ## What it sends
 
-The only network requests Vettira makes are to Yahoo Finance's unofficial, undocumented
+Vettira reaches only Yahoo Finance. It sends requests to Yahoo's unofficial, undocumented
 `v8/finance/chart` endpoint: one request per enabled symbol on your watchlist, each time it
-updates, and one more for one symbol each time you press Test Connection in Settings. They carry
-no account, no key and no cookie, and a User-Agent that names Vettira. Nothing else goes out: no
-analytics, no crash reporting, no update checks. Yahoo sees those requests (the symbols and your
-IP address) under its own terms and privacy policy.
+updates, and one more for one symbol each time you press Test Connection in Settings. In regular
+hours it also keeps one connection open to Yahoo's unofficial, undocumented streaming quote feed
+(`streamer.finance.yahoo.com`), and sends it the symbols to stream: your enabled symbols, again as
+they change. They carry no account, no key and no cookie, and a User-Agent that names Vettira.
+Nothing else goes out: no analytics, no crash reporting, no update checks. Yahoo sees those
+requests and the connection (the symbols and your IP address) under its own terms and privacy
+policy.
 
 ## Removing it
 
