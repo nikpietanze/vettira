@@ -246,6 +246,10 @@ final class AppState {
         change { $0.notificationSound = on }
     }
 
+    func setShowsChartInMenuBar(_ on: Bool) {
+        change { $0.showsChartInMenuBar = on }
+    }
+
     /// Registers or unregisters Vettira as a login item. Off until the user turns it on.
     func setLaunchAtLogin(_ on: Bool) {
         do {

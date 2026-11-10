@@ -5,8 +5,9 @@ import Foundation
 /// It's undocumented and not licensed or endorsed by Yahoo; it can change or be blocked without
 /// notice, and Yahoo's terms govern its use (docs/providers.md). No key, no account, no cookie: one
 /// request per symbol, sent one at a time and at most one a second, with a User-Agent that names
-/// Vettira. It reads the regular session's fields only, never an extended-hours price, and never
-/// scrapes a page.
+/// Vettira. Each request asks for the day's 5-minute bars, so the same request that brings the
+/// quote brings the day's chart. It reads the regular session's fields and bars only, never an
+/// extended-hours price, and never scrapes a page.
 public actor YahooFinanceProvider: MarketDataProvider {
     public nonisolated let name = "Yahoo Finance (unofficial)"
     public nonisolated let streams = false
@@ -58,7 +59,10 @@ public actor YahooFinanceProvider: MarketDataProvider {
               let path = trimmed.addingPercentEncoding(withAllowedCharacters: Self.symbolAllowed),
               var components = URLComponents(string: Self.chartURL + path)
         else { return .unknown }
-        components.queryItems = [URLQueryItem(name: "range", value: "1d"), URLQueryItem(name: "interval", value: "1d")]
+        components.queryItems = [
+            URLQueryItem(name: "range", value: "1d"), URLQueryItem(name: "interval", value: "5m"),
+            URLQueryItem(name: "includePrePost", value: "false"),
+        ]
 
         let (data, response) = try await send(URLRequest(url: components.url!))
         if let host = response.url?.host?.lowercased(),
@@ -85,7 +89,9 @@ public actor YahooFinanceProvider: MarketDataProvider {
         } catch {
             throw .malformedResponse(detail: "not the chart JSON Vettira expects")
         }
-        guard let meta = chart.result?.first?.meta else { return chart.error != nil ? .unknown : .unusable }
+        guard let result = chart.result?.first, let meta = result.meta else {
+            return chart.error != nil ? .unknown : .unusable
+        }
         guard let price = meta.regularMarketPrice, price > 0,
               let time = meta.regularMarketTime, time > 0
         else { return .unusable }
@@ -96,7 +102,32 @@ public actor YahooFinanceProvider: MarketDataProvider {
             source: name,
             sessionHigh: meta.regularMarketDayHigh.flatMap { $0 > 0 ? $0 : nil },
             session: Self.session(at: time, regular: meta.currentTradingPeriod?.regular),
-            providerDelay: nil))
+            providerDelay: nil,
+            previousClose: Self.positive(meta.chartPreviousClose),
+            intraday: Self.bars(result)))
+    }
+
+    /// The result's bars, oldest first. A missing, zero or negative close is a gap (Yahoo sends
+    /// `null` for a bar with no trades), and a bar whose time isn't after the one before is dropped.
+    private static func bars(_ result: ChartResponse.Result) -> [PriceBar] {
+        guard let times = result.timestamp else { return [] }
+        let prices = result.indicators?.quote?.first
+        var bars: [PriceBar] = []
+        for (index, time) in times.enumerated() {
+            guard let time, time > 0, bars.last.map({ time > $0.timestamp.timeIntervalSince1970 }) ?? true else {
+                continue
+            }
+            bars.append(PriceBar(
+                timestamp: Date(timeIntervalSince1970: time),
+                close: positive(prices?.close?[safe: index] ?? nil),
+                high: positive(prices?.high?[safe: index] ?? nil)))
+        }
+        return bars
+    }
+
+    /// The value when it's a finite price above 0.
+    private static func positive(_ value: Double?) -> Double? {
+        value.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
     }
 
     /// `.regular` when the quote's time falls in the regular period Yahoo reports for the day, its
@@ -126,13 +157,33 @@ public actor YahooFinanceProvider: MarketDataProvider {
         }
         struct Result: Decodable {
             let meta: Meta?
+            let timestamp: [Double?]?
+            let indicators: Indicators?
+
+            private enum CodingKeys: String, CodingKey { case meta, timestamp, indicators }
+
+            // Bars that can't be read leave the quote without a chart, never without a quote.
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                meta = try container.decodeIfPresent(Meta.self, forKey: .meta)
+                timestamp = try? container.decodeIfPresent([Double?].self, forKey: .timestamp)
+                indicators = try? container.decodeIfPresent(Indicators.self, forKey: .indicators)
+            }
         }
         struct Meta: Decodable {
             let symbol: String?
             let regularMarketPrice: Double?
             let regularMarketTime: Double?
             let regularMarketDayHigh: Double?
+            let chartPreviousClose: Double?
             let currentTradingPeriod: TradingPeriods?
+        }
+        struct Indicators: Decodable {
+            let quote: [Bars]?
+        }
+        struct Bars: Decodable {
+            let close: [Double?]?
+            let high: [Double?]?
         }
         struct TradingPeriods: Decodable {
             let regular: Period?
@@ -202,4 +253,11 @@ public struct RequestPacing: Sendable {
     /// At most one request a second, on the real clock.
     public static let oncePerSecond = RequestPacing(
         interval: .seconds(1), now: { .now }, sleep: { try? await Task.sleep(for: $0) })
+}
+
+extension Array {
+    /// The element at `index`, or `nil` past the end.
+    fileprivate subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
 }

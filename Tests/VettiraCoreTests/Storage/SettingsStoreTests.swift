@@ -21,6 +21,7 @@ private func edited() throws -> UserSettings {
     try settings.watchlist.showInMenuBar(ticker("DIA"))
     settings.defaultThresholds = try PullbackThresholds(early: 0.3, strong: 0.6)
     settings.notificationSound = false
+    settings.showsChartInMenuBar = false
     settings.monitorSettings = try MonitorSettings(interval: 60)
     try settings.setStaleTolerance(120)
     return settings
@@ -62,6 +63,7 @@ private let edits: [(name: String, edit: @Sendable (inout UserSettings) throws -
     ("update interval", { $0.monitorSettings = try MonitorSettings(interval: 300) }),
     ("staleness tolerance", { try $0.setStaleTolerance(900) }),
     ("alert sound", { $0.notificationSound = false }),
+    ("menu-bar chart", { $0.showsChartInMenuBar = false }),
 ]
 
 @Test(arguments: edits.map(\.name))
@@ -113,6 +115,7 @@ func eachEditIsThereAfterARelaunch(name: String) throws {
         let settings = try store.load()
         #expect(settings.defaultThresholds == .standard)
         #expect(settings.notificationSound)
+        #expect(settings.showsChartInMenuBar)
         #expect(settings.watchlist.entries.map(\.symbol.rawValue) == ["SPY", "QQQ"])
         #expect(settings.watchlist.menuBarSymbol == ticker("SPY"))
         #expect(settings.watchlist.entry(for: ticker("SPY"))?.isEnabled == true)
@@ -167,6 +170,9 @@ func aCorruptFileIsMovedAsideAndTheDefaultsLoad(contents: String) throws {
         let json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL)) as? [String: Any])
         #expect(json["updateInterval"] as? Double == 30)
         #expect(json["staleTolerance"] as? Double == 90)
-        #expect(Set(json.keys) == ["watchlist", "defaultThresholds", "notificationSound", "updateInterval", "staleTolerance"])
+        #expect(Set(json.keys) == [
+            "watchlist", "defaultThresholds", "notificationSound", "updateInterval", "staleTolerance",
+            "showChartInMenuBar",
+        ])
     }
 }

@@ -166,8 +166,10 @@ shows, storage) on recorded and mock quotes, and never call Yahoo.
 
 ## Using it
 
-The menu bar shows one symbol's price and its change from the high; click it for every symbol's
-price, high, pullback and data age, and the connection's health. A pullback past a threshold sends
+The menu bar shows one symbol's price and its change from the high, with a small chart of its
+price today, updated each poll: green while it's above the previous close, red while it's below
+(up or down on the day, not advice; turn it off in Settings for a narrower menu bar). Click it for
+every symbol's chart, price, high, pullback and data age, and the connection's health. A pullback past a threshold sends
 a notification, worded as a possible reversal, never advice. Closing a window leaves Vettira
 running in the menu bar, still monitoring, until you pick **Quit Vettira**.
 
@@ -177,7 +179,8 @@ and last warning, then the connection's health and diagnostics. Add a symbol by 
 the list, drag rows or use the arrows to reorder it, pin symbols to the top, switch one off to stop
 updating it, give one its own thresholds, or pick the one the menu bar shows. **Settings…** (in the
 popover and the dashboard, or Cmd-, while a window is open) sets the update interval, how old a
-quote can be before it's stale, and the default thresholds, and has **Test Connection**. Each
+quote can be before it's stale, the default thresholds and whether the menu bar shows its chart,
+and has **Test Connection**. Each
 change is saved as you make it. While one of its windows is open Vettira shows in the Dock and the
 app switcher; closing the last one takes it back to the menu bar only.
 

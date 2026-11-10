@@ -38,15 +38,18 @@ One request per symbol in the watchlist, each time it updates:
 
 | Request | What for |
 |---|---|
-| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=1d` | The symbol's latest quote, in the chart's `meta` |
+| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=5m&includePrePost=false` | The symbol's latest quote, in the chart's `meta`, and the day's regular-session bars, five minutes each, for the menu bar's and the popover's chart |
 
 - **One at a time, at most one a second.** Requests go one after another, never in parallel,
   with at least a second between any two, so a watchlist of ten symbols takes about ten seconds
   to update.
 - **An honest User-Agent:** `Vettira (https://github.com/nikpietanze/vettira)`, never a browser's.
 - **Nothing about you** beyond what any web request carries, like your IP address: no key, no
-  cookie, no account. Vettira keeps nothing from the responses but the quotes.
-- It reads no web pages, follows no consent forms, and downloads no history.
+  cookie, no account. Vettira keeps nothing from the responses but the quotes and the day's bars,
+  in memory, each replaced by the next update's.
+- **The chart costs no extra request.** The day's bars come in the same response as the quote.
+- It reads no web pages, follows no consent forms, and downloads no history: the bars are the
+  current day's only (`range=1d`), or the last session's while the market is closed.
 - **Test Connection**, in Settings, is the one request you trigger yourself: one quote for the
   menu-bar symbol (SPY while the watchlist is empty), sent in turn with the updates' requests and
   at the same pace, never alongside one. It says what came back: the quote with its time and age;
@@ -58,18 +61,21 @@ or is down, the update stops there, since the remaining symbols would fail the s
 Yahoo doesn't know (HTTP 404, "No data found, symbol may be delisted"), or returns without a usable
 price or time, is listed on its own, and the rest of the watchlist still updates.
 
-From each response it reads the regular session's fields only, from `chart.result[0].meta`:
+From each response it reads the regular session's fields only, from `chart.result[0]`:
 
 | Yahoo's field | Becomes |
 |---|---|
-| `regularMarketPrice` | the price |
-| `regularMarketTime` | the quote's time (seconds since 1970) |
-| `regularMarketDayHigh` | the session high, when present |
-| `currentTradingPeriod.regular` | the session: regular when the quote's time falls in the day's regular period (its close included), closed otherwise, unknown without the period |
+| `meta.regularMarketPrice` | the price |
+| `meta.regularMarketTime` | the quote's time (seconds since 1970) |
+| `meta.regularMarketDayHigh` | the session high, when present |
+| `meta.currentTradingPeriod.regular` | the session: regular when the quote's time falls in the day's regular period (its close included), closed otherwise, unknown without the period |
+| `meta.chartPreviousClose` | the previous close, when present: what the day's change, up or down, is measured from |
+| `timestamp`, `indicators.quote[0].close` and `.high` | the day's bars: each bar's start time, last price and highest price. A bar Yahoo has no price for (`null`) is a gap in the chart, and a bar whose time isn't after the one before is dropped. Bars that can't be read leave the quote without a chart, never without a quote |
 
 The endpoint declares no delay, so a quote has none (`providerDelay` is empty), and its age is
 what shows how current it is. Outside the regular session the price, time and high are the last
-regular session's, and an extended-hours price is never read.
+regular session's, and an extended-hours price is never read: `includePrePost=false` keeps the
+bars to the regular session too.
 
 ## How a provider plugs in
 
@@ -108,6 +114,8 @@ responses and never call the provider.
 | `sessionHigh` | The regular session's high, only when the provider supplies it as that; otherwise empty, and Vettira's own high is the observed high |
 | `session` | Pre-market, regular, post-market, closed, or unknown, as the provider reports it |
 | `providerDelay` | How far behind the exchange the provider says its data is, when it says |
+| `previousClose` | The previous regular session's close, when the provider supplies it |
+| `intraday` | The day's regular-session bars, oldest first (`PriceBar`: start time, last price or none for a gap, highest price): today's, or the last session's while the market is closed. Empty when the provider returned none |
 
 ### Errors
 
@@ -142,3 +150,9 @@ the session the moment belongs to, so the demo alerts at any time of day. It pol
 interval in the settings, so at 10 seconds the early warning comes about a minute after launch.
 Its Test Connection returns the symbol's quote at its current step without moving it on, so
 testing doesn't change when the warnings come.
+
+Each quote has a made-up day for the chart too: a previous close 0.60% below the base price or
+above it (the symbol decides which, so a watchlist shows days both up and down), and a 5-minute
+bar from the open of the moment's session up to that moment, wandering from halfway between the
+previous close and the base price to the quote's own price. Outside the regular session it has
+no bars.

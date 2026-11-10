@@ -12,6 +12,9 @@ public struct UserSettings: Equatable, Sendable {
     public var defaultThresholds = PullbackThresholds.standard
     /// Whether an alert's notification plays a sound. On by default.
     public var notificationSound = true
+    /// Whether the menu bar shows a chart of the day next to its text. On by default; off for a
+    /// narrower menu bar.
+    public var showsChartInMenuBar = true
     /// How often the quote monitor updates in regular hours.
     public var monitorSettings = MonitorSettings.standard
     /// How the alert engine judges quotes. Only the staleness tolerance is the user's
@@ -34,7 +37,7 @@ public struct UserSettings: Equatable, Sendable {
 
 extension UserSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case watchlist, defaultThresholds, notificationSound, updateInterval, staleTolerance
+        case watchlist, defaultThresholds, notificationSound, updateInterval, staleTolerance, showChartInMenuBar
     }
 
     // A field an older file doesn't have gets its default. Add new fields the same way. A value
@@ -45,6 +48,7 @@ extension UserSettings: Codable {
         defaultThresholds = try container.decodeIfPresent(PullbackThresholds.self, forKey: .defaultThresholds)
             ?? .standard
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
+        showsChartInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showChartInMenuBar) ?? true
         do {
             if let interval = try container.decodeIfPresent(TimeInterval.self, forKey: .updateInterval) {
                 monitorSettings = try MonitorSettings(interval: interval)
@@ -68,6 +72,7 @@ extension UserSettings: Codable {
         try container.encode(watchlist, forKey: .watchlist)
         try container.encode(defaultThresholds, forKey: .defaultThresholds)
         try container.encode(notificationSound, forKey: .notificationSound)
+        try container.encode(showsChartInMenuBar, forKey: .showChartInMenuBar)
         try container.encode(monitorSettings.interval, forKey: .updateInterval)
         try container.encode(alertSettings.staleTolerance, forKey: .staleTolerance)
     }

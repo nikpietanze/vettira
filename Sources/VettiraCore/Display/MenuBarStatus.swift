@@ -29,13 +29,28 @@ public struct MenuBarStatus: Equatable, Sendable {
     /// The menu bar's text: `SPY 512.30 −0.31%`, `SPY 512.30 · stale`; empty when there's no symbol.
     public let title: String
     public let indicator: Indicator
-    /// A sentence saying the same in full, for the tooltip and VoiceOver.
+    /// A sentence saying the same in full.
     public let detail: String
+    /// The chart of the symbol's day, next to the text: when the settings show one and the latest
+    /// quote has the bars to draw it, whatever the status (the text says when it's closed or stale).
+    public private(set) var chart: PriceChart?
+
+    /// Everything the item says, for the tooltip and VoiceOver: `detail`, then the chart in words.
+    public var accessibilityValue: String {
+        [detail, chart?.description].compactMap { $0 }.joined(separator: " ")
+    }
 
     /// The status at `now`. A quote older than the settings' staleness tolerance is stale.
     public init(
         settings: UserSettings, snapshot: MonitorSnapshot, now: Date, calendar: MarketCalendar = .usEquities
     ) {
+        self.init(text: settings, snapshot: snapshot, now: now, calendar: calendar)
+        if settings.showsChartInMenuBar, let symbol, let quote = snapshot.symbols[symbol]?.quote {
+            chart = PriceChart(quote: quote, now: now, calendar: calendar)
+        }
+    }
+
+    private init(text settings: UserSettings, snapshot: MonitorSnapshot, now: Date, calendar: MarketCalendar) {
         let staleTolerance = settings.alertSettings.staleTolerance
         guard let symbol = settings.watchlist.menuBarSymbol else {
             self.init(nil, "", .empty, "The watchlist is empty, so there's no symbol to show.")

@@ -33,6 +33,8 @@ public struct SymbolRow: Equatable, Sendable, Identifiable {
     public let isStale: Bool
     /// The last warning this session: `Early warning at 10:31:05 EST`.
     public let lastWarning: String?
+    /// The chart of the symbol's day, when its latest quote has the bars to draw it.
+    public let chart: PriceChart?
 
     /// A row for each symbol on the watchlist, in its display order (pinned first), at `now`. A
     /// quote older than the settings' staleness tolerance is stale.
@@ -84,6 +86,7 @@ public struct SymbolRow: Equatable, Sendable, Identifiable {
             lastWarning = nil
         }
         status = Self.status(entry: entry, state: state, isStale: isStale)
+        chart = quote.flatMap { PriceChart(quote: $0, now: now, calendar: calendar) }
     }
 
     private static func status(entry: WatchlistEntry, state: SymbolSnapshot?, isStale: Bool) -> String? {

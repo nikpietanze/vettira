@@ -132,6 +132,24 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
         #expect(await harness.provider.requests.count == 3)
     }
 
+    @Test func eachPollReplacesTheSymbolsDayWithTheLatest() async {
+        /// A quote whose day is one bar per poll so far, at 100 plus the poll's number.
+        func day(_ polls: Int) -> MockProvider.Reply {
+            { symbols, now in
+                .success(QuoteBatch(quotes: symbols.map {
+                    Quote(symbol: $0, price: 100, timestamp: now - 2, source: "Test provider", session: .regular,
+                          previousClose: 99, intraday: (1...polls).map { PriceBar(timestamp: now - 2, close: 100 + Double($0)) })
+                }))
+            }
+        }
+        let harness = Harness(replies: [day(1), day(2)])
+        await harness.poll()
+        #expect(await harness.state("SPY")?.quote?.intraday.map(\.close) == [101])
+        await harness.poll()
+        #expect(await harness.state("SPY")?.quote?.intraday.map(\.close) == [101, 102])
+        #expect(await harness.state("SPY")?.quote?.previousClose == 99)
+    }
+
     @Test func anEmptyWatchlistSendsNoRequests() async {
         let harness = Harness([], at: at("10:00:00"))
         await harness.poll(2)

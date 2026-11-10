@@ -1,7 +1,7 @@
 import SwiftUI
 import VettiraCore
 
-/// One symbol in the popover and the dashboard: ticker and high on the left; price, change from
+/// One symbol in the popover: ticker and high on the left; the day's chart, price, change from
 /// the high, and data age or what's wrong on the right; the last warning this session below.
 struct SymbolRowView: View {
     let row: SymbolRow
@@ -19,6 +19,11 @@ struct SymbolRowView: View {
                     }
                 }
                 Spacer()
+                if let chart = row.chart {
+                    Image(nsImage: PriceChartImage.image(chart))
+                        .accessibilityLabel(chart.description)
+                        .help(chart.description)
+                }
                 Text(row.price ?? "\u{2014}")
                 Text(row.changeFromHigh ?? "")
                     .frame(minWidth: 56, alignment: .trailing)

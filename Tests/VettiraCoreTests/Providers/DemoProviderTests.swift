@@ -17,6 +17,29 @@ import VettiraCore
     #expect(batch.quotes[0].price == DemoProvider.basePrice("SPY"))
 }
 
+@Test func demoQuotesHaveAMadeUpDayFromTheOpenUpToNow() async throws {
+    let now = nyTime("10:02:00")
+    let batch = try await DemoProvider(now: { now }).quotes(for: ["SPY", "QQQ"])
+    for quote in batch.quotes {
+        // 09:30 to 10:00, every 5 minutes: none after now.
+        #expect(quote.intraday.map(\.timestamp) == stride(from: 0, through: 1800, by: 300).map { nyTime("09:30:00") + $0 })
+        #expect(quote.intraday.allSatisfy { ($0.close ?? 0) > 0 })
+        #expect(quote.previousClose == DemoProvider.previousClose(quote.symbol))
+        // The day ends near the quote's price, so the line doesn't jump to it.
+        let last = try #require(quote.intraday.last?.close)
+        #expect(abs(last - quote.price) / quote.price * 100 < 0.05)
+    }
+    // One symbol's day is up and the other's down, so the demo shows both colours.
+    let directions = Set(batch.quotes.compactMap { PriceChart(quote: $0, now: now)?.direction })
+    #expect(directions == [.up, .down])
+}
+
+@Test func outsideRegularHoursTheDemoHasNoBars() async throws {
+    let now = nyTime("08:00:00")
+    let quote = try #require(try await DemoProvider(now: { now }).quotes(for: ["SPY"]).quotes.first)
+    #expect(quote.intraday.isEmpty)
+}
+
 @Test func testingTheConnectionDoesntMoveTheDemoOn() async throws {
     let now = nyTime("10:00:00")
     let provider = DemoProvider(now: { now })

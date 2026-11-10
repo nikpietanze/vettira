@@ -54,10 +54,10 @@ flowchart LR
     state["<b>AppState</b><br/>@Observable, main actor,<br/>owned by the App:<br/>settings, latest snapshot,<br/>notification and login-item status"]
     delivery["<b>AlertDelivery</b><br/>asks for permission once,<br/>posts each alert"]
     center["UNUserNotificationCenter"]
-    controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus"]
-    popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows, ConnectionHealth"]
+    controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus,<br/>its PriceChart"]
+    popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows with their PriceCharts,<br/>ConnectionHealth"]
     dashboard["<b>DashboardView</b><br/>in a window: the watchlist's table<br/>and its edits, ConnectionHealth,<br/>DiagnosticsSummary"]
-    settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection"]
+    settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection,<br/>the menu bar's chart"]
     store["<b>SettingsStore</b>"]
     provider["<b>MarketDataProvider</b>"]
     monitor -- snapshots --> state
@@ -94,8 +94,9 @@ tested without a UI:
 
 | Type | What it is |
 |---|---|
-| `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls |
-| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
+| `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls. Next to the text, the symbol's `PriceChart`, unless Settings turned it off (`showsChartInMenuBar`), and its accessibility value is the detail and then the chart in words |
+| `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated each poll: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
+| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, its day's `PriceChart` (the popover draws it), high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
 | `ConnectionHealth` | Waiting, connected, outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
 | `DiagnosticsSummary` | The dashboard's diagnostics, label and value: the source, the update interval in and outside regular hours, the staleness tolerance, when quotes last came, the last and next update, the last error and how many updates in a row have failed |
 | `ConnectionTestReport` | What Settings' Test Connection found: the quote with its time, age and source; that it's stale, in regular hours; the last session's price, while the market is closed; or the provider error's message and next step. `run(on:symbol:…)` asks the provider |
@@ -104,8 +105,20 @@ tested without a UI:
 
 The menu-bar item's accessibility label (its description) is always "Vettira", whatever it
 shows, so VoiceOver names it and UI scripts can find it, and its accessibility value is the status
-in full, which changes with it. Its accessibility title stays the text it shows (the ticker and
-price): macOS reports a status item's title from its button's text.
+in full, the chart's words included, which changes with it; the tooltip says the same. Its
+accessibility title stays the text it shows (the ticker and price): macOS reports a status item's
+title from its button's text.
+
+**The chart.** The button's image is the status icon and then, while the chart is on, the
+`PriceChart`, about 40 by 16 points (`PriceChartImage`, `App/Vettira/`), and each popover row
+draws the same chart before its price. The line is system green when the price is up on the day
+(above the previous close) and system red when it's down, with the previous close as a faint
+dotted line; green and red say up or down on the day, never buy or sell, and the line's place
+against the dotted one and the words in the accessibility value and tooltip say it without colour.
+The images draw each time they're shown, with the system's dynamic colours, so they follow a light
+or dark menu bar, popover and highlighted button. It's today's price, updated each poll: the bars
+come with each quote and each poll replaces them; the text still shows the data's age or that
+it's stale or closed.
 
 **Notifications.** `AlertDelivery` (`Sources/VettiraCore/Notifications/`) posts each alert
 through `UNUserNotificationCenter`, with a sound unless the user turned it off (**Alert sound**
@@ -131,8 +144,8 @@ thresholds or put it back on the defaults, pick the menu bar's symbol, and remov
 table are the connection's health and its diagnostics.
 
 **Settings** (`SettingsView`) has the update interval and the staleness tolerance, the default
-thresholds, where quotes come from with Yahoo's terms, **Test Connection**, and the alert sound
-and Launch at Login switches. Thresholds are typed as percents and checked together
+thresholds, where quotes come from with Yahoo's terms, **Test Connection**, **Show chart in menu
+bar** (on by default), and the alert sound and Launch at Login switches. Thresholds are typed as percents and checked together
 (`PullbackThresholds(early:strong:)` from text), saying why when they're refused. Test Connection
 asks the monitor's own provider for one quote for the menu-bar symbol (SPY while the watchlist is
 empty), so its request waits behind any of the monitor's and keeps to the same pacing; it's
@@ -175,7 +188,7 @@ another next to it, as [PRIVACY.md](../PRIVACY.md) promises.
 
 ```mermaid
 flowchart LR
-    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound"]
+    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound; menu-bar chart"]
     store["<b>SettingsStore</b><br/>JSON, written whole"]
     settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
     engine["<b>ReversalAlertEngine.State</b><br/>per symbol: the high, the last<br/>quote's time and price, which<br/>thresholds fired and when"]
@@ -186,7 +199,8 @@ flowchart LR
 `UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
 `PullbackThresholds`; `SettingsStore` saves it as JSON in
 `~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save. It
-also holds whether notifications play a sound, the update interval (`MonitorSettings`, saved as
+also holds whether notifications play a sound, whether the menu bar shows its chart
+(`showChartInMenuBar`), the update interval (`MonitorSettings`, saved as
 `updateInterval` in seconds) and the alert engine's settings, of which only the staleness
 tolerance is the user's and saved (`staleTolerance`, in seconds; the rest are the standard ones).
 Input is checked where it comes in, into types that can't hold a bad value: a `TickerSymbol` is

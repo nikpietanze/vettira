@@ -3,7 +3,8 @@ import VettiraCore
 
 /// The Settings window's content (`MenuBarController` makes the window; Settings… in the popover,
 /// the dashboard and the app menu, or Cmd-, open it): how often to update, how old a quote can
-/// be, the default thresholds, where quotes come from with Test Connection, and the app's switches.
+/// be, the default thresholds, where quotes come from with Test Connection, the menu bar's chart,
+/// and the app's switches.
 /// Each change is saved as it's made.
 struct SettingsView: View {
     static let windowID = "settings"
@@ -56,6 +57,13 @@ struct SettingsView: View {
                 Link("Yahoo's Terms of Service", destination: Self.yahooTerms)
                     .font(.caption)
                 ConnectionTestView(state: state)
+            }
+            Section("Menu bar") {
+                Toggle("Show chart in menu bar", isOn: Binding(
+                    get: { state.settings.showsChartInMenuBar }, set: { state.setShowsChartInMenuBar($0) }))
+                Note("A small chart of today's price, updated each poll, next to the menu-bar symbol: green when "
+                    + "it's up on the day, red when it's down, with the previous close as a dotted line. Up and "
+                    + "down on the day, not advice. Turn it off for a narrower menu bar.")
             }
             Section("General") {
                 Toggle("Alert sound", isOn: Binding(

@@ -36,6 +36,12 @@ public struct Quote: Sendable, Equatable {
     /// How far behind the exchange the provider says its data is (`0` when it says it isn't
     /// delayed), or `nil` when it doesn't say.
     public var providerDelay: TimeInterval?
+    /// The previous regular session's close, when the provider supplies it: what the day's change,
+    /// up or down, is measured from.
+    public var previousClose: Double?
+    /// The day's regular-session bars, oldest first, as the provider returned them with the quote:
+    /// today's, or the last session's while the market is closed. Empty when it returned none.
+    public var intraday: [PriceBar]
 
     public init(
         symbol: String,
@@ -44,7 +50,9 @@ public struct Quote: Sendable, Equatable {
         source: String,
         sessionHigh: Double? = nil,
         session: Session = .unknown,
-        providerDelay: TimeInterval? = nil
+        providerDelay: TimeInterval? = nil,
+        previousClose: Double? = nil,
+        intraday: [PriceBar] = []
     ) {
         self.symbol = symbol
         self.price = price
@@ -53,11 +61,30 @@ public struct Quote: Sendable, Equatable {
         self.sessionHigh = sessionHigh
         self.session = session
         self.providerDelay = providerDelay
+        self.previousClose = previousClose
+        self.intraday = intraday
     }
 
     /// How old the quote is at `now`: the time since its timestamp. Negative when the quote's
     /// timestamp is ahead of `now`, which a clock difference can cause.
     public func age(at now: Date) -> TimeInterval {
         now.timeIntervalSince(timestamp)
+    }
+}
+
+/// One bar of the day's prices: the price at the end of a few minutes of trading, and the highest
+/// price in them.
+public struct PriceBar: Sendable, Equatable {
+    /// When the bar starts.
+    public var timestamp: Date
+    /// The last price in the bar; `nil` when the provider has none for it, a gap in the day.
+    public var close: Double?
+    /// The highest price in the bar, when the provider has one.
+    public var high: Double?
+
+    public init(timestamp: Date, close: Double?, high: Double? = nil) {
+        self.timestamp = timestamp
+        self.close = close
+        self.high = high
     }
 }

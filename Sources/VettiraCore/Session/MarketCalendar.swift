@@ -141,7 +141,8 @@ public struct MarketCalendar: Sendable {
         return newYork.date(from: components)!
     }
 
-    private static func day(of instant: Date) -> TradingDay {
+    /// The New York date of `instant`, as a day, whether or not the market trades on it.
+    static func day(of instant: Date) -> TradingDay {
         let components = newYork.dateComponents([.year, .month, .day], from: instant)
         return TradingDay(year: components.year!, month: components.month!, day: components.day!)
     }

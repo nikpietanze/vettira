@@ -71,14 +71,19 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         #if DEBUG
         let changed = button.title != status.title
         #endif
-        button.image = NSImage(systemSymbolName: status.indicator.systemImage, accessibilityDescription: nil)
+        let icon = NSImage(systemSymbolName: status.indicator.systemImage, accessibilityDescription: nil)
+        if let icon, let chart = status.chart {
+            button.image = PriceChartImage.menuBar(icon: icon, chart: chart)
+        } else {
+            button.image = icon
+        }
         button.title = status.title
-        button.toolTip = status.detail
-        // The label names the item whatever it shows; the value is its status. The button's cell
-        // is the element accessibility reads, so both get them.
+        button.toolTip = status.accessibilityValue
+        // The label names the item whatever it shows; the value is its status, the chart's
+        // description included. The button's cell is the element accessibility reads, so both get them.
         for element in [button, button.cell].compactMap({ $0 as? NSAccessibilityProtocol & NSObject }) {
             element.setAccessibilityLabel(Vettira.name)
-            element.setAccessibilityValue(status.detail)
+            element.setAccessibilityValue(status.accessibilityValue)
         }
         #if DEBUG
         if changed { log.info("Menu-bar item accessibility: label \(button.cell?.accessibilityLabel() ?? "none", privacy: .public), title \(button.cell?.accessibilityTitle() ?? "none", privacy: .public)") }

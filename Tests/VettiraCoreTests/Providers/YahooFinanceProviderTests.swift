@@ -85,6 +85,69 @@ import VettiraCore
         #expect(batch.unknownSymbols.isEmpty)
     }
 
+    // MARK: The day's bars
+
+    @Test func readsTheDaysBarsAndThePreviousClose() async throws {
+        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spyWithBars)])
+        let quote = try #require(try await yahoo.quotes(for: ["SPY"]).quotes.first)
+        let open = YahooFixtures.regularStart
+        #expect(quote.previousClose == YahooFixtures.previousClose)
+        #expect(quote.intraday == [
+            PriceBar(timestamp: Date(timeIntervalSince1970: open), close: 751.2, high: 751.5),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open + 300), close: 751.9, high: 752.1),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open + 600), close: nil, high: nil),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open + 900), close: 752.4, high: 752.6),
+        ])
+        // The quote's own fields are the meta's, as before.
+        #expect(quote.price == 752.68)
+        #expect(quote.timestamp == YahooFixtures.quoteTime)
+        #expect(quote.sessionHigh == 752.96)
+    }
+
+    @Test func readsARealDaysBarsFromTheOpenToTheClose() async throws {
+        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spyDay)])
+        let quote = try #require(try await yahoo.quotes(for: ["SPY"]).quotes.first)
+        #expect(quote.price == 752.69)
+        #expect(quote.previousClose == 735.29)
+        #expect(quote.session == .regular)
+        // 09:30 to 16:00, every 5 minutes, each with a price and a high.
+        #expect(quote.intraday.map(\.timestamp)
+            == stride(from: YahooFixtures.regularStart, through: YahooFixtures.regularEnd, by: 300).map {
+                Date(timeIntervalSince1970: $0)
+            })
+        #expect(quote.intraday.allSatisfy { $0.close != nil && $0.high != nil })
+        #expect(quote.intraday.last?.close.map { ($0 * 100).rounded() / 100 } == 752.69)
+        // The bars' highest high is the day's high Yahoo reports.
+        let highest = try #require(quote.intraday.compactMap(\.high).max())
+        #expect((highest * 100).rounded() / 100 == quote.sessionHigh)
+    }
+
+    @Test func aRealDaysChartIsUpOnTheDay() async throws {
+        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spyDay)])
+        let quote = try #require(try await yahoo.quotes(for: ["SPY"]).quotes.first)
+        // The next morning, before the open.
+        let chart = try #require(PriceChart(quote: quote, now: YahooFixtures.quoteTime + 14 * 3600))
+        #expect(chart.direction == .up)
+        #expect(chart.description == "Chart of the last session's price for SPY: up 2.37% from the previous close of 735.29.")
+        #expect(chart.segments.count == 1)
+        #expect(chart.segments[0].count == 79)
+    }
+
+    @Test func barsThatCantBeReadLeaveTheQuoteWithoutAChart() async throws {
+        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spyWithUnreadableBars)])
+        let batch = try await yahoo.quotes(for: ["SPY"])
+        let quote = try #require(batch.quotes.first)
+        #expect(quote.price == 752.68)
+        #expect(quote.intraday.isEmpty)
+        #expect(quote.previousClose == nil)
+    }
+
+    @Test func withoutBarsTheQuoteHasNone() async throws {
+        let (yahoo, _) = provider([Yahoo.chart("SPY", YahooFixtures.spy)])
+        let quote = try #require(try await yahoo.quotes(for: ["SPY"]).quotes.first)
+        #expect(quote.intraday.isEmpty)
+    }
+
     @Test func noSymbolsSendsNoRequest() async throws {
         let (yahoo, http) = provider([])
         #expect(try await yahoo.quotes(for: []) == QuoteBatch(quotes: []))
@@ -106,7 +169,7 @@ import VettiraCore
         let requests = await http.requests
         #expect(requests.count == 2)
         for request in requests {
-            #expect(query(of: request) == ["range": "1d", "interval": "1d"])
+            #expect(query(of: request) == ["range": "1d", "interval": "5m", "includePrePost": "false"])
             let agent = try #require(request.value(forHTTPHeaderField: "User-Agent"))
             #expect(agent == "Vettira (https://github.com/nikpietanze/vettira)")
             #expect(request.value(forHTTPHeaderField: "Cookie") == nil)

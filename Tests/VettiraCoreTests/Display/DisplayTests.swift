@@ -133,6 +133,61 @@ private func status(
     #expect(shown.indicator == .closed)
 }
 
+// MARK: The day's chart
+
+/// SPY at `price` at 10:00:15 with bars from 09:30 and a previous close of 100.
+private func spyWithDay(_ price: Double = 100.3, stale: Bool = false) -> SymbolSnapshot {
+    var state = spy(price, stale: stale)
+    state.quote?.previousClose = 100
+    state.quote?.intraday = [
+        PriceBar(timestamp: nyTime("09:30:00"), close: 99.8), PriceBar(timestamp: nyTime("09:55:00"), close: 100.6),
+    ]
+    return state
+}
+
+@Test func theMenuBarShowsTheDaysChartAndSaysItInWords() throws {
+    let shown = status(displaySnapshot([spyWithDay()]))
+    let chart = try #require(shown.chart)
+    #expect(chart.direction == .up)
+    // The text keeps its sign; the chart adds its words to what the item says.
+    #expect(shown.title == "SPY 100.30 \u{2212}0.20%")
+    #expect(shown.accessibilityValue == "SPY 100.30 is 0.20% below its observed high of 100.50. Quote 5 s old. "
+        + "Chart of today's price for SPY, updated each poll: up 0.30% from the previous close of 100.00.")
+}
+
+@Test func aStaleOrClosedQuoteStillShowsItsChartWithTheStatusInTheText() {
+    let stale = status(displaySnapshot([spyWithDay(stale: true)]), now: nyTime("10:05:15"))
+    #expect(stale.title == "SPY 100.30 \u{00B7} stale")
+    #expect(stale.chart != nil)
+    let closed = status(displaySnapshot([spyWithDay(stale: true)], market: .afterHours), now: nyTime("17:00:00"))
+    #expect(closed.title == "SPY 100.30 \u{00B7} closed")
+    #expect(closed.chart != nil)
+}
+
+@Test func withTheChartTurnedOffTheMenuBarHasNone() {
+    var settings = UserSettings()
+    settings.watchlist = displayWatchlist(["SPY"])
+    settings.showsChartInMenuBar = false
+    let shown = MenuBarStatus(settings: settings, snapshot: displaySnapshot([spyWithDay()]), now: nyTime("10:00:20"))
+    #expect(shown.chart == nil)
+    #expect(shown.accessibilityValue == shown.detail)
+}
+
+@Test func withoutBarsThereIsNoChart() {
+    let shown = status(displaySnapshot([spy(100.3)]))
+    #expect(shown.chart == nil)
+    #expect(shown.accessibilityValue == shown.detail)
+}
+
+@Test func eachRowHasItsDaysChartWhateverTheMenuBarSetting() {
+    var settings = rowSettings(displayWatchlist(["SPY", "QQQ"], disabled: ["QQQ"]))
+    settings.showsChartInMenuBar = false
+    let rows = SymbolRow.rows(
+        settings: settings, snapshot: displaySnapshot([spyWithDay()]), now: nyTime("10:00:20"), timeZone: newYork)
+    #expect(rows[0].chart?.direction == .up)
+    #expect(rows[1].chart == nil)
+}
+
 // MARK: The popover's and the dashboard's rows
 
 private func rowSettings(_ list: Watchlist) -> UserSettings {
