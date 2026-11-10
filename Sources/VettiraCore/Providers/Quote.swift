@@ -42,6 +42,12 @@ public struct Quote: Sendable, Equatable {
     /// The day's regular-session bars, oldest first, as the provider returned them with the quote:
     /// today's, or the last session's while the market is closed. Empty when it returned none.
     public var intraday: [PriceBar]
+    /// The security's name, when the provider supplies it: `SPDR S&P 500 ETF Trust`.
+    public var name: String?
+    /// How many shares have traded in the regular session so far, when the provider says.
+    public var dayVolume: Int?
+    /// The regular session's low, only when the provider supplies it as that.
+    public var sessionLow: Double?
 
     public init(
         symbol: String,
@@ -52,7 +58,10 @@ public struct Quote: Sendable, Equatable {
         session: Session = .unknown,
         providerDelay: TimeInterval? = nil,
         previousClose: Double? = nil,
-        intraday: [PriceBar] = []
+        intraday: [PriceBar] = [],
+        name: String? = nil,
+        dayVolume: Int? = nil,
+        sessionLow: Double? = nil
     ) {
         self.symbol = symbol
         self.price = price
@@ -63,6 +72,9 @@ public struct Quote: Sendable, Equatable {
         self.providerDelay = providerDelay
         self.previousClose = previousClose
         self.intraday = intraday
+        self.name = name
+        self.dayVolume = dayVolume
+        self.sessionLow = sessionLow
     }
 
     /// How old the quote is at `now`: the time since its timestamp. Negative when the quote's
@@ -72,19 +84,31 @@ public struct Quote: Sendable, Equatable {
     }
 }
 
-/// One bar of the day's prices: the price at the end of a few minutes of trading, and the highest
-/// price in them.
+/// One bar of prices: the trading in a few minutes, an hour, a day or a week, as the provider
+/// returned it. Only `timestamp` is always there; a field the provider has no value for is `nil`.
 public struct PriceBar: Sendable, Equatable {
     /// When the bar starts.
     public var timestamp: Date
-    /// The last price in the bar; `nil` when the provider has none for it, a gap in the day.
+    /// The last price in the bar; `nil` when the provider has none for it, a gap in the chart.
     public var close: Double?
     /// The highest price in the bar, when the provider has one.
     public var high: Double?
+    /// The first price in the bar, when the provider has one.
+    public var open: Double?
+    /// The lowest price in the bar, when the provider has one.
+    public var low: Double?
+    /// How many shares traded in the bar, when the provider says.
+    public var volume: Int?
 
-    public init(timestamp: Date, close: Double?, high: Double? = nil) {
+    public init(
+        timestamp: Date, close: Double?, high: Double? = nil, open: Double? = nil, low: Double? = nil,
+        volume: Int? = nil
+    ) {
         self.timestamp = timestamp
         self.close = close
         self.high = high
+        self.open = open
+        self.low = low
+        self.volume = volume
     }
 }

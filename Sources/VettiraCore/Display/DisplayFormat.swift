@@ -19,6 +19,34 @@ public enum DisplayFormat {
         String(format: "%.2f%%", percent)
     }
 
+    /// A change with its sign, and the percent it is of `from`: `+2.22 (+0.30%)`, `−1.05 (−0.14%)`,
+    /// or `0.00 (0.00%)` when either rounds to nothing. The minus is a real minus sign.
+    public static func change(_ change: Double, from: Double) -> String {
+        let percent = from != 0 ? change / from * 100 : 0
+        return "\(signed(change, decimals: abs(change) < 1 && abs(from) < 1 ? 4 : 2)) (\(signed(percent, decimals: 2))%)"
+    }
+
+    /// A percent with its sign: `+0.40%`, `−0.12%`, `0.00%`.
+    public static func signedPercent(_ percent: Double) -> String {
+        "\(signed(percent, decimals: 2))%"
+    }
+
+    private static func signed(_ value: Double, decimals: Int) -> String {
+        let digits = String(format: "%.\(decimals)f", abs(value))
+        guard digits.contains(where: { $0 != "0" && $0 != "." }) else { return digits }
+        return (value > 0 ? "+" : "\u{2212}") + digits
+    }
+
+    /// A number of shares, short: `950`, `41.2K`, `412K`, `61.2M`, `1.3B`.
+    public static func volume(_ shares: Int) -> String {
+        let value = Double(max(0, shares))
+        for (size, suffix) in [(1e9, "B"), (1e6, "M"), (1e3, "K")] where value >= size * 0.9995 {
+            let scaled = value / size
+            return (scaled >= 99.95 ? String(format: "%.0f", scaled) : String(format: "%.1f", scaled)) + suffix
+        }
+        return String(Int(value))
+    }
+
     /// A pair of thresholds, early then stronger: `0.25% / 0.40%`.
     public static func thresholds(_ thresholds: PullbackThresholds) -> String {
         "\(percent(thresholds.early)) / \(percent(thresholds.strong))"

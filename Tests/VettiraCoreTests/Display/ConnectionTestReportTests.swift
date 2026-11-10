@@ -22,6 +22,11 @@ private actor ScriptedProvider: MarketDataProvider {
         requests.append(symbols)
         return try reply.get()
     }
+
+    /// Not asked for in these tests.
+    func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
+        throw .unavailable
+    }
 }
 
 private func report(

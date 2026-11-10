@@ -9,6 +9,8 @@ struct DashboardView: View {
     static let windowID = "dashboard"
     let state: AppState
     let openSettings: () -> Void
+    /// Opens a symbol's chart window.
+    let openChart: (TickerSymbol) -> Void
     @State private var search = ""
     @State private var selection: TickerSymbol?
 
@@ -26,7 +28,7 @@ struct DashboardView: View {
                 let rows = state.rows(at: context.date)
                 WatchlistTable(
                     state: state, rows: rows.filter { $0.matches(search) }, searching: !search.isEmpty,
-                    selection: $selection)
+                    selection: $selection, openChart: openChart)
                     .overlay {
                         if rows.isEmpty {
                             Text("No symbols on the watchlist yet. Add one above.").foregroundStyle(.secondary)
@@ -48,7 +50,7 @@ struct DashboardView: View {
             SourceNote(source: state.snapshot.diagnostics.source)
         }
         .padding()
-        .frame(minWidth: 1160, minHeight: 480)
+        .frame(minWidth: 1240, minHeight: 480)
     }
 }
 
@@ -84,12 +86,14 @@ private struct AddSymbolField: View {
 
 /// Every symbol, pinned first, with its controls: on or off, pinned, shown in the menu bar, its
 /// thresholds, moved up or down, removed. Dragging a row reorders the list while it isn't
-/// filtered by a search.
+/// filtered by a search. Clicking a ticker or its day's chart, or double-clicking a row, opens
+/// the symbol's chart.
 private struct WatchlistTable: View {
     let state: AppState
     let rows: [SymbolRow]
     let searching: Bool
     @Binding var selection: TickerSymbol?
+    let openChart: (TickerSymbol) -> Void
 
     var body: some View {
         Table(of: SymbolRow.self, selection: $selection) {
@@ -106,7 +110,13 @@ private struct WatchlistTable: View {
                         row.isPinned ? "Unpin \(row.symbol)" : "Pin \(row.symbol)",
                         systemImage: row.isPinned ? "pin.fill" : "pin", highlighted: row.isPinned
                     ) { state.setPinned(!row.isPinned, for: row.symbol) }
-                    Text(row.symbol.rawValue).bold()
+                    Button { openChart(row.symbol) } label: {
+                        Text(row.symbol.rawValue).bold()
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.primary)
+                    .help("Open \(row.symbol.rawValue)'s chart")
+                    .accessibilityLabel("Open \(row.symbol.rawValue)'s chart")
                     Spacer(minLength: 0)
                     IconButton(
                         row.isInMenuBar ? "\(row.symbol) is shown in the menu bar" : "Show \(row.symbol) in the menu bar",
@@ -115,6 +125,18 @@ private struct WatchlistTable: View {
                 }
             }
             .width(min: 96, ideal: 104)
+            TableColumn("Today") { row in
+                Button { openChart(row.symbol) } label: {
+                    if let chart = row.chart {
+                        SparklineView(chart: chart)
+                    } else {
+                        Color.clear.frame(width: SparklineView.size.width, height: SparklineView.size.height)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(row.chart.map { "\($0.description) Open \(row.symbol.rawValue)'s chart." } ?? "Open \(row.symbol.rawValue)'s chart")
+            }
+            .width(72)
             TableColumn("Price") { row in
                 Text(row.price ?? "\u{2014}").monospacedDigit()
             }
@@ -166,6 +188,8 @@ private struct WatchlistTable: View {
         }
         .contextMenu(forSelectionType: TickerSymbol.self) { symbols in
             if let symbol = symbols.first, let entry = state.settings.watchlist.entry(for: symbol) {
+                Button("Open Chart") { openChart(symbol) }
+                Divider()
                 Button(entry.isEnabled ? "Turn Off" : "Turn On") { state.setEnabled(!entry.isEnabled, for: symbol) }
                 Button(entry.isPinned ? "Unpin" : "Pin") { state.setPinned(!entry.isPinned, for: symbol) }
                 Button("Show in Menu Bar") { state.showInMenuBar(symbol) }
@@ -175,6 +199,8 @@ private struct WatchlistTable: View {
                 Divider()
                 Button("Remove \(symbol.rawValue)") { state.remove(symbol) }
             }
+        } primaryAction: { symbols in
+            if let symbol = symbols.first { openChart(symbol) }
         }
         .onDeleteCommand {
             if let selection { state.remove(selection) }

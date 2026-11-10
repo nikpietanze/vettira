@@ -58,6 +58,8 @@ flowchart LR
     popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows with their PriceCharts,<br/>ConnectionHealth"]
     dashboard["<b>DashboardView</b><br/>in a window: the watchlist's table<br/>and its edits, ConnectionHealth,<br/>DiagnosticsSummary"]
     settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection,<br/>the menu bar's cycle"]
+    chartView["<b>SymbolChartView</b><br/>a window per symbol:<br/>SymbolChart, timeframes,<br/>crosshair, SymbolStats"]
+    history["<b>ChartHistoryStore</b><br/>history per timeframe,<br/>on request, in memory"]
     store["<b>SettingsStore</b>"]
     provider["<b>MarketDataProvider</b>"]
     streamer["<b>QuoteStreamer</b><br/>on a QuoteStream"]
@@ -68,6 +70,10 @@ flowchart LR
     controller -- click --> popover
     popover -- Open Dashboard --> dashboard
     popover -- Settings… --> settingsView
+    popover -- click a symbol --> chartView
+    dashboard -- click a symbol --> chartView
+    state --> chartView
+    chartView -- a timeframe --> history -- one request, paced --> provider
     state --> popover
     state --> dashboard
     state --> settingsView
@@ -102,7 +108,9 @@ tested without a UI:
 | `PriceChange`, `PriceChanges` | Which characters of a price changed and which way: the old and new prices compared as displayed, from the left, everything from the first difference to the end changed (all of it when the number of characters changes). `PriceChanges` keeps each symbol's latest price and last change from every snapshot, so each symbol keeps its colours until its own next change, whichever symbol is showing |
 | `MenuBarCycle` | Which symbol the menu bar shows: the enabled symbols in the watchlist's order, starting at the menu-bar symbol, moving on every `menuBarCycle` seconds (off, 3, 5 or 10; 5 by default), or with it off only the menu-bar symbol. It only rotates what the monitor already has: no requests |
 | `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated with each quote: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
-| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, its day's `PriceChart` (the popover draws it), high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
+| `SymbolChart` | The chart window's maths for one timeframe's `PriceHistory`: each price's place across (1D by time over the session, longer timeframes one bar after another, leaving out nights and weekends) and its unbroken run, the price range with room above and below, the change over the period from the close before it (`+2.22 (+0.30%) today`, `−37.51 (−9.64%) past year`) and its direction, the period's high and low, the time labels in ET (hours, days, weeks, months or years) and `ticks(atMost:)` to thin them, the point `nearest(toX:)` the pointer, and its `readout` for the crosshair (`13:24 ET`, the price, `+0.40%`, `Vol 412K`). The line ends at the latest quote's price. 1D draws the previous close |
+| `SymbolStats` | The figures under the chart, whatever the timeframe: the day's open, previous close and volume from the latest quote and its bars (Yahoo's day volume when it gives one); the day's high and low only as the provider supplies them for the regular session (`sessionHigh`, `sessionLow`), a dash otherwise, since a high Vettira worked out itself is only ever the observed high; the session or observed high, labelled as which it is, the change from it, and the thresholds |
+| `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, its day's `PriceChart` (the popover and the dashboard draw it), high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover, or its ticker or chart in the dashboard, opens its chart window |
 | `ConnectionHealth` | Waiting, connected ("Connected, prices streaming" while the stream is live), outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
 | `DiagnosticsSummary` | The dashboard's diagnostics, label and value: the source, the update interval in and outside regular hours (and while prices stream), the stream's state (off, connecting, live since when, or reconnecting in how long and why) when there's a stream, the staleness tolerance, when quotes last came, the last and next update, the last error and how many updates in a row have failed |
 | `ConnectionTestReport` | What Settings' Test Connection found: the quote with its time, age and source; that it's stale, in regular hours; the last session's price, while the market is closed; or the provider error's message and next step. `run(on:symbol:…)` asks the provider |
@@ -138,6 +146,22 @@ The images draw each time they're shown, with the system's dynamic colours, so t
 or dark popover. It's today's price, updated with each quote: the bars
 come with each polled quote and each poll replaces them, and the line ends at the latest price,
 polled or streamed; the row still shows the data's age or that it's stale or closed.
+
+**A symbol's chart.** Clicking a symbol in the popover or the dashboard (its ticker, its day's
+chart, a double-click on its row, or **Open Chart** in its context menu) opens its chart window,
+one per symbol (`SymbolChartView`, `App/Vettira/`), which `MenuBarController` makes the first time
+and keeps when it's closed. It draws `SymbolChart` with Swift Charts: a smooth line over a fill
+that fades downward, green when the period is up and red when it's down, light gridlines with
+prices on the right and times along the bottom, and on 1D the previous close as a dotted line.
+Hovering shows a crosshair and a tooltip with the `readout`. The timeframe pills ask
+`AppState.history(for:timeframe:)`, which asks `ChartHistoryStore` (`Providers/`): 1D is the polled
+quote's own bars, so it needs no request and moves with each poll; any other timeframe is the
+cached history while it's fresh, or one request through the monitor's own provider, so it waits
+behind any poll's request and keeps to its pace ([providers.md](providers.md#history-for-the-chart)).
+Each line ends at the latest price, polled or streamed. The header always shows the quote's time
+and age, or why it can't alert, so the chart never looks live when it isn't. The `SymbolStats`
+grid needs no request. The dashboard's rows draw each symbol's day as a small line
+(`SparklineView`) from its `PriceChart`.
 
 **Notifications.** `AlertDelivery` (`Sources/VettiraCore/Notifications/`) posts each alert
 through `UNUserNotificationCenter`, with a sound unless the user turned it off (**Alert sound**

@@ -175,4 +175,9 @@ actor MockProvider: MarketDataProvider {
     static func batch(_ batch: QuoteBatch) -> Reply {
         { _, _ in .success(batch) }
     }
+
+    /// Not asked for in these tests.
+    func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
+        throw .unavailable
+    }
 }

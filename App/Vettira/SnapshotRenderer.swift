@@ -5,8 +5,9 @@ import SwiftUI
 import VettiraCore
 
 /// A snapshot run (`--snapshot <dir>`, Debug builds only): once the snapshot is due
-/// (`LaunchOptions.Snapshot.isDue`), draws the menu-bar item, the popover, the dashboard and
-/// Settings to PNG files in the directory, in light and dark, then quits. They're the real views
+/// (`LaunchOptions.Snapshot.isDue`), draws the menu-bar item, the popover, the dashboard,
+/// Settings, and the menu-bar symbol's chart at 1D (with the crosshair) and 1Y to PNG files in the
+/// directory, in light and dark, then quits. They're the real views
 /// on the app's own state, drawn into bitmaps in windows that are never put on screen, so nothing
 /// shows on the user's screen and no Screen Recording or Accessibility permission is needed.
 @MainActor
@@ -42,9 +43,20 @@ final class SnapshotRenderer {
             return false
         }
         var written = true
+        // The chart's symbol and its year, fetched first (made up, in a demo run) so it draws at once.
+        let symbol = state.settings.watchlist.menuBarSymbol ?? state.settings.watchlist.entries.first?.symbol
+        var year: PriceHistory?
+        if let symbol {
+            do {
+                year = try await state.history(for: symbol, timeframe: .oneYear)
+            } catch {
+                say("Snapshot: no 1Y history for \(symbol): \(error.message)")
+                written = false
+            }
+        }
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             guard let appearance = NSAppearance(named: appearance) else { continue }
-            for (picture, view, size) in pictures() {
+            for (picture, view, size) in pictures(chart: symbol, year: year) {
                 let file = snapshot.directory.appending(path: "\(picture)-\(name).png")
                 do {
                     try await draw(view, size: size, appearance: appearance).write(to: file)
@@ -60,18 +72,28 @@ final class SnapshotRenderer {
 
     /// Each picture's name, view and size in points: the popover at the width it shows at and the
     /// height its content takes, the windows at the size they first open at, the menu bar's item
-    /// at its own.
-    private func pictures() -> [(String, NSView, NSSize?)] {
-        let popover = NSHostingView(rootView: MenuBarPopover(state: state, openDashboard: {}, openSettings: {}))
-        let dashboard = NSHostingView(rootView: DashboardView(state: state, openSettings: {}))
+    /// at its own. The chart's 1D has the crosshair a little past the middle of the session.
+    private func pictures(chart symbol: TickerSymbol?, year: PriceHistory?) -> [(String, NSView, NSSize?)] {
+        let popover = NSHostingView(rootView: MenuBarPopover(state: state, openDashboard: {}, openSettings: {}, openChart: { _ in }))
+        let dashboard = NSHostingView(rootView: DashboardView(state: state, openSettings: {}, openChart: { _ in }))
         let settings = NSHostingView(rootView: SettingsView(state: state))
         let menuBar = menuBar()
-        return [
+        var pictures: [(String, NSView, NSSize?)] = [
             ("1-menu-bar", menuBar, menuBar.frame.size),
             ("2-popover", popover, nil),
             ("3-dashboard", dashboard, nil),
             ("4-settings", settings, SettingsView.firstSize),
         ]
+        if let symbol {
+            pictures.append((
+                "5-chart-1d", NSHostingView(rootView: SymbolChartView(state: state, symbol: symbol, hoverX: 0.55)),
+                SymbolChartView.firstSize))
+            pictures.append((
+                "6-chart-1y",
+                NSHostingView(rootView: SymbolChartView(state: state, symbol: symbol, timeframe: .oneYear, fetched: year)),
+                SymbolChartView.firstSize))
+        }
+        return pictures
     }
 
     /// The menu-bar item as it shows each symbol in its cycle, top to bottom in the cycle's

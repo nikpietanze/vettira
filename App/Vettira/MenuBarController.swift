@@ -35,7 +35,8 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         let content = NSHostingController(
             rootView: MenuBarPopover(
                 state: state, openDashboard: { [weak self] in self?.showDashboard() },
-                openSettings: { [weak self] in self?.showSettings() }))
+                openSettings: { [weak self] in self?.showSettings() },
+                openChart: { [weak self] in self?.showChart($0) }))
         // The popover takes the content's size and follows it as rows and warnings come and go.
         content.sizingOptions = .preferredContentSize
         popover.contentViewController = content
@@ -121,7 +122,16 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     /// Opens the dashboard, made the first time and kept when it's closed.
     func showDashboard() {
         show(DashboardView.windowID, title: Vettira.name) { [state] in
-            DashboardView(state: state, openSettings: { [weak self] in self?.showSettings() })
+            DashboardView(
+                state: state, openSettings: { [weak self] in self?.showSettings() },
+                openChart: { [weak self] in self?.showChart($0) })
+        }
+    }
+
+    /// Opens a symbol's chart window, one per symbol, made the first time and kept when it's closed.
+    func showChart(_ symbol: TickerSymbol) {
+        show(SymbolChartView.windowID(symbol), title: symbol.rawValue, firstSize: SymbolChartView.firstSize) { [state] in
+            SymbolChartView(state: state, symbol: symbol)
         }
     }
 

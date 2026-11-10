@@ -158,12 +158,14 @@ private final class DemoClock: @unchecked Sendable {
 }
 
 @Test(arguments: [
-    // After-hours, Tuesday: to 10:00 that morning.
-    ("19:00:00", "2026-11-10", "10:00:00", "2026-11-10"),
-    // Pre-market, Tuesday: to 10:00 the same morning.
-    ("05:00:00", "2026-11-10", "10:00:00", "2026-11-10"),
+    // After-hours, Tuesday: to 14:00 that day.
+    ("19:00:00", "2026-11-10", "14:00:00", "2026-11-10"),
+    // Pre-market, Tuesday: to 14:00 the same day.
+    ("05:00:00", "2026-11-10", "14:00:00", "2026-11-10"),
     // Saturday belongs to Friday's session.
-    ("12:00:00", "2026-11-14", "10:00:00", "2026-11-13"),
+    ("12:00:00", "2026-11-14", "14:00:00", "2026-11-13"),
+    // The day after Thanksgiving closes at 13:00: to 12:00.
+    ("20:00:00", "2026-11-27", "12:00:00", "2026-11-27"),
 ])
 func theDemoClockMovesIntoRegularHours(time: String, day: String, expected: String, expectedDay: String) {
     let now = nyTime(time, on: day)
@@ -183,4 +185,64 @@ private final class RecordingCenter: AlertNotificationCenter, @unchecked Sendabl
     func add(_ notification: AlertNotification, sound: Bool) async throws {
         lock.withLock { _titles.append(notification.title) }
     }
+}
+
+// MARK: History
+
+@Test func demoHistoryForOneDayIsTheQuotesOwnDay() async throws {
+    let now = nyTime("11:02:00")
+    let provider = DemoProvider(now: { now })
+    let quote = try await provider.testConnection(symbol: "SPY")
+    let day = try await provider.history(for: "SPY", timeframe: .oneDay)
+    #expect(day.bars == quote.intraday)
+    #expect(day.previousClose == quote.previousClose)
+    // Each bar opens where the one before closed, with a made-up volume.
+    #expect(zip(day.bars, day.bars.dropFirst()).allSatisfy { $1.open == $0.close })
+    #expect(day.bars.allSatisfy { ($0.volume ?? 0) > 0 && $0.low! <= min($0.open!, $0.close!) })
+}
+
+@Test(arguments: [ChartTimeframe.fiveDays, .oneMonth, .sixMonths, .yearToDate, .oneYear, .fiveYears])
+func demoHistoryEndsAtTheQuotesPriceAndIsTheSameEachRun(timeframe: ChartTimeframe) async throws {
+    let now = nyTime("11:02:00")
+    let quote = try await DemoProvider(now: { now }).testConnection(symbol: "QQQ")
+    let history = try await DemoProvider(now: { now }).history(for: "QQQ", timeframe: timeframe)
+    let again = try await DemoProvider(now: { now }).history(for: "QQQ", timeframe: timeframe)
+    #expect(history == again)
+    #expect(history.symbol == "QQQ")
+    #expect(history.timeframe == timeframe)
+    #expect(history.previousClose != nil)
+    let last = try #require(history.bars.last?.close)
+    #expect(abs(last - quote.price) < 1e-9)
+    #expect(zip(history.bars, history.bars.dropFirst()).allSatisfy { $0.timestamp < $1.timestamp })
+    #expect(history.bars.allSatisfy { bar in
+        guard let open = bar.open, let close = bar.close, let high = bar.high, let low = bar.low else { return false }
+        return high >= max(open, close) && low <= min(open, close) && low > 0 && (bar.volume ?? 0) > 0
+    })
+    #expect(history.bars.allSatisfy { $0.timestamp <= now })
+}
+
+@Test func demoHistoryIsOnTradingDaysInRegularHours() async throws {
+    let now = nyTime("11:02:00")
+    let provider = DemoProvider(now: { now })
+    let calendar = MarketCalendar.usEquities
+    // 5 sessions of 15-minute bars: four whole days of 26 and today's to 11:00, 7.
+    let fiveDays = try await provider.history(for: "SPY", timeframe: .fiveDays)
+    #expect(fiveDays.bars.count == 4 * 26 + 7)
+    #expect(fiveDays.bars.allSatisfy { calendar.status(at: $0.timestamp)?.state == .regular })
+    #expect(fiveDays.bars.first?.timestamp == nyTime("09:30:00", on: "2026-11-04"))
+    // A year of trading days, each at its open: none on a weekend or a holiday the calendar has.
+    var newYork = Calendar(identifier: .gregorian)
+    newYork.timeZone = TimeZone(identifier: "America/New_York")!
+    let year = try await provider.history(for: "SPY", timeframe: .oneYear)
+    #expect((248...256).contains(year.bars.count))
+    #expect(year.bars.allSatisfy {
+        !newYork.isDateInWeekend($0.timestamp) && newYork.dateComponents([.hour, .minute], from: $0.timestamp) == DateComponents(hour: 9, minute: 30)
+    })
+    func open(_ month: Int, _ day: Int) -> Date {
+        newYork.date(from: DateComponents(year: 2026, month: month, day: day, hour: 9, minute: 30))!
+    }
+    #expect(!year.bars.contains { $0.timestamp == open(7, 3) })
+    #expect(year.bars.contains { $0.timestamp == open(7, 2) })
+    // Five years of weeks.
+    #expect(try await provider.history(for: "SPY", timeframe: .fiveYears).bars.count == 261)
 }

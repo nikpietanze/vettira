@@ -7,12 +7,13 @@ struct MenuBarPopover: View {
     let state: AppState
     let openDashboard: () -> Void
     let openSettings: () -> Void
+    let openChart: (TickerSymbol) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 VStack(alignment: .leading, spacing: 10) {
-                    SymbolList(state: state, rows: state.rows(at: context.date))
+                    SymbolList(state: state, rows: state.rows(at: context.date), openChart: openChart)
                     Divider()
                     HealthView(health: state.health(at: context.date))
                 }
@@ -39,10 +40,12 @@ struct MenuBarPopover: View {
     }
 }
 
-/// The watchlist's rows; clicking one shows it in the menu bar.
+/// The watchlist's rows; clicking one opens its chart, and its context menu shows it in the menu
+/// bar.
 struct SymbolList: View {
     let state: AppState
     let rows: [SymbolRow]
+    let openChart: (TickerSymbol) -> Void
 
     var body: some View {
         if rows.isEmpty {
@@ -51,11 +54,15 @@ struct SymbolList: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(rows) { row in
-                    Button { state.showInMenuBar(row.symbol) } label: {
+                    Button { openChart(row.symbol) } label: {
                         SymbolRowView(row: row).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Show \(row.symbol.rawValue) in the menu bar")
+                    .help("Open \(row.symbol.rawValue)'s chart")
+                    .contextMenu {
+                        Button("Open Chart") { openChart(row.symbol) }
+                        Button("Show in Menu Bar") { state.showInMenuBar(row.symbol) }
+                    }
                 }
             }
         }

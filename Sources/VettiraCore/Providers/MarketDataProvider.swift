@@ -3,6 +3,7 @@
 /// Everything past the provider (polling, session highs, alerts, the app) depends on this protocol
 /// and on `Quote`, never on a particular provider, so another provider can be added without
 /// changing them. A provider is polled; prices pushed between polls come from a `QuoteStream`.
+/// It also gives a symbol's price history for the chart, one timeframe at a time, only when asked.
 public protocol MarketDataProvider: Sendable {
     /// The provider's name, shown as each quote's source and in Settings.
     var name: String { get }
@@ -18,6 +19,12 @@ public protocol MarketDataProvider: Sendable {
     /// and pacing as `quotes(for:)`. Throws the error that stops it, the symbol being unknown or
     /// having no usable quote included.
     func testConnection(symbol: String) async throws(ProviderError) -> Quote
+
+    /// `symbol`'s bars over `timeframe`, in one request through the same pacing as `quotes(for:)`,
+    /// never alongside one. Throws `.unknownSymbols` for a symbol the provider doesn't know, and
+    /// `.noUsableQuote` when it returned nothing for it. Only `ChartHistoryStore` calls it, when the
+    /// user opens a timeframe; nothing asks for history in the background.
+    func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory
 }
 
 extension MarketDataProvider {

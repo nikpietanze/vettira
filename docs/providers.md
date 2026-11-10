@@ -45,7 +45,8 @@ connection ([Streamed prices](#streamed-prices)):
 
 | Request | What for |
 |---|---|
-| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=5m&includePrePost=false` | The symbol's latest quote, in the chart's `meta`, and the day's regular-session bars, five minutes each, for the popover's chart |
+| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=5m&includePrePost=false` | The symbol's latest quote, in the chart's `meta`, and the day's regular-session bars, five minutes each, for the popover's and the dashboard's small charts and the chart window's 1D |
+| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=<range>&interval=<interval>&includePrePost=false` | Only when you pick a timeframe in a symbol's chart window, one request for that symbol and timeframe ([History for the chart](#history-for-the-chart)) |
 
 - **One at a time, at most one a second.** Requests go one after another, never in parallel,
   with at least a second between any two, so a watchlist of ten symbols takes about ten seconds
@@ -55,8 +56,12 @@ connection ([Streamed prices](#streamed-prices)):
   cookie, no account. Vettira keeps nothing from the responses but the quotes and the day's bars,
   in memory, each replaced by the next update's.
 - **The chart costs no extra request.** The day's bars come in the same response as the quote.
-- It reads no web pages, follows no consent forms, and downloads no history: the bars are the
-  current day's only (`range=1d`), or the last session's while the market is closed.
+- It reads no web pages, follows no consent forms, and downloads no history in the background:
+  each update's bars are the current day's only (`range=1d`), or the last session's while the
+  market is closed. Longer history is asked for only when you open it in a chart.
+- **A chart's timeframe** is the other request you trigger yourself
+  ([History for the chart](#history-for-the-chart)), sent in turn with the updates' requests and
+  at the same pace.
 - **Test Connection**, in Settings, is the one request you trigger yourself: one quote for the
   menu-bar symbol (SPY while the watchlist is empty), sent in turn with the updates' requests and
   at the same pace, never alongside one. It says what came back: the quote with its time and age;
@@ -77,12 +82,57 @@ From each response it reads the regular session's fields only, from `chart.resul
 | `meta.regularMarketDayHigh` | the session high, when present |
 | `meta.currentTradingPeriod.regular` | the session: regular when the quote's time falls in the day's regular period (its close included), closed otherwise, unknown without the period |
 | `meta.chartPreviousClose` | the previous close, when present: what the day's change, up or down, is measured from |
-| `timestamp`, `indicators.quote[0].close` and `.high` | the day's bars: each bar's start time, last price and highest price, for the chart and, when there's no `regularMarketDayHigh`, the observed high. A bar Yahoo has no price for (`null`) is a gap in the chart, and a bar whose time isn't after the one before is dropped. Bars that can't be read leave the quote without a chart, never without a quote |
+| `meta.longName`, or `meta.shortName` | the security's name, for the chart window's heading |
+| `meta.regularMarketVolume` | the day's volume, for the chart window's figures |
+| `meta.regularMarketDayLow` | the regular session's low, for the chart window's figures |
+| `timestamp`, `indicators.quote[0].close` and `.high`, and `.open`, `.low` and `.volume` when present | the day's bars: each bar's start time, last price and highest price, then its first and lowest price and volume, for the charts and, when there's no `regularMarketDayHigh`, the observed high. A bar Yahoo has no price for (`null`) is a gap in the chart, and a bar whose time isn't after the one before is dropped. Bars that can't be read leave the quote without a chart, never without a quote |
 
 The endpoint declares no delay, so a quote has none (`providerDelay` is empty), and its age is
 what shows how current it is. Outside the regular session the price, time and high are the last
 regular session's, and an extended-hours price is never read: `includePrePost=false` keeps the
 bars to the regular session too.
+
+## History for the chart
+
+Clicking a symbol in the dashboard or the popover opens its chart, with timeframes 1D, 5D, 1M,
+6M, YTD, 1Y and 5Y. Each is one chart-endpoint request with its own range and interval
+(`YahooFinanceProvider.history(for:timeframe:)`), regular session only:
+
+| Timeframe | `range` | `interval` | Kept for |
+|---|---|---|---|
+| 1D | `1d` | `5m` | no request while the symbol updates: the updates bring these bars |
+| 5D | `5d` | `15m` | 15 minutes |
+| 1M | `1mo` | `60m` | an hour |
+| 6M, YTD, 1Y | `6mo`, `ytd`, `1y` | `1d` | 4 hours |
+| 5Y | `5y` | `1wk` | 12 hours |
+
+`ChartHistoryStore` keeps this to the light-client rule, the one exception to downloading no
+history:
+
+- **Only when you open it.** Nothing is fetched ahead of time or in the background: a request is
+  sent when you pick a timeframe whose history isn't kept, for that one symbol and timeframe.
+- **Through the same pacing.** It waits its turn behind any update's request in flight, never
+  alongside one, and keeps to at most one request a second.
+- **Kept in memory, for about a bar** (the table), so picking a timeframe again, or reopening the
+  window, sends nothing. Picking it while its request is in flight waits for that request. Nothing
+  is written to disk, and the history is gone when Vettira quits.
+- **1D needs no request** while the symbol is monitored: its bars come with each update, so the
+  chart moves with them. A symbol that's off asks once, kept for 5 minutes.
+- **Backs off.** After Yahoo rate-limits (for as long as it asked, at least a minute), refuses or
+  can't be reached, no history is asked for at all for a minute; after any other failure, not
+  that symbol and timeframe.
+
+From each response it reads `meta.symbol`, `meta.longName` (or `shortName`) for the window's
+heading, `meta.chartPreviousClose` (the close before the first bar, what the period's change is
+measured from) and the bars' `timestamp` with `indicators.quote[0]`'s `open`, `high`, `low`,
+`close` and `volume`. A bar with no `close` (`null`) is a gap in the line. The line ends at the
+symbol's latest quote, so between requests it moves with the updates. A symbol Yahoo doesn't know
+throws `unknownSymbols`, and the window shows each error's message and next step.
+
+The chart window's figures (open, high, low, previous close, volume) are the day's, from the
+updates' own response, `meta.regularMarketVolume` among them: they need no request. Its High and
+Low are Yahoo's `regularMarketDayHigh` and `regularMarketDayLow` only, a dash without them: a high
+Vettira works out from the bars and prices it saw is the observed high, shown as that.
 
 ## Streamed prices
 
@@ -158,6 +208,7 @@ A `MarketDataProvider` has:
 | `name` | The provider's name, shown as each quote's source: "Yahoo Finance (unofficial)" |
 | `quotes(for:)` | The latest quotes for many symbols, in as few requests as the provider allows (Yahoo's: one per symbol, paced). Symbols it doesn't know come back in the batch's `unknownSymbols`, and symbols it returned without a usable price or time (a halted or newly listed symbol, say) in its `unusableSymbols`; the rest of the batch still comes. Only a response that can't be read at all fails the batch |
 | `testConnection(symbol:)` | One quote for one symbol, for Test Connection in Settings: by default one `quotes(for:)` call, so it goes through the same requests and pacing as a poll, waits behind any poll's request in flight, and counts against the one-request-a-second limit. It returns the quote, or throws why there's none: the provider's error, `unknownSymbols` or `noUsableQuote` for the symbol, or `malformedResponse` when nothing came back for it |
+| `history(for:timeframe:)` | One symbol's bars over a `ChartTimeframe` (`PriceHistory`: the bars, the close before them and the security's name), in one request through the same pacing. Only `ChartHistoryStore` calls it, when the user opens a timeframe ([History for the chart](#history-for-the-chart)) |
 
 A `QuoteStream` (Yahoo's is `YahooQuoteStream`) has a `name`, the source its quotes show, and
 `connect()`, which returns a `QuoteStreamConnection`: `subscribe(_:)` and `unsubscribe(_:)`
@@ -180,7 +231,10 @@ their tests answer with recorded responses and messages and never call Yahoo.
 | `session` | Pre-market, regular, post-market, closed, or unknown, as the provider reports it |
 | `providerDelay` | How far behind the exchange the provider says its data is, when it says |
 | `previousClose` | The previous regular session's close, when the provider supplies it |
-| `intraday` | The day's regular-session bars, oldest first (`PriceBar`: start time, last price or none for a gap, highest price): today's, or the last session's while the market is closed. Empty when the provider returned none |
+| `intraday` | The day's regular-session bars, oldest first (`PriceBar`: start time, last price or none for a gap, and when the provider has them the highest price, first price, lowest price and volume): today's, or the last session's while the market is closed. Empty when the provider returned none |
+| `name` | The security's name, when the provider supplies it, for the chart window's heading |
+| `dayVolume` | The shares traded in the regular session so far, when the provider says |
+| `sessionLow` | The regular session's low, only when the provider supplies it as that |
 
 ### Errors
 
@@ -212,16 +266,22 @@ so with the default thresholds the sixth poll is 0.30% below it (an early warnin
 `DemoProvider.path(for:)`) skips the 0.15 step, so it warns a poll earlier and on the seventh
 poll is rising again while the others fall: the menu bar shows prices both rising and falling. Each quote is timestamped at the
 monitor's clock, in the regular session, with no session high. The app moves the monitor's clock
-into the regular session (`DemoProvider.regularHoursOffset`), to 30 minutes after the open of
-the session the moment belongs to, so the demo alerts at any time of day. It polls at the update
+into the regular session (`DemoProvider.regularHoursOffset`), to 14:00 in New York (an hour
+before an early close) in the session the moment belongs to, so the demo alerts at any time of
+day and its day's chart has most of a session to show. It polls at the update
 interval in the settings, so at 10 seconds the early warning comes about a minute after launch.
 Its Test Connection returns the symbol's quote at its current step without moving it on, so
 testing doesn't change when the warnings come.
 
+Its history for every timeframe is made up too, so the chart window can be tried without Yahoo:
+a random walk, the same on every run for each symbol and timeframe, on the market's trading days
+(weekdays where the calendar doesn't reach) in regular hours, ending at the symbol's demo price,
+with opens, highs, lows and volumes. Its 1D is the quote's own day.
+
 Each quote has a made-up day for the chart too: a previous close 0.60% below the base price or
 above it (the symbol decides which, so a watchlist shows days both up and down), and a 5-minute
 bar from the open of the moment's session up to that moment, wandering from below the base price
-to the quote's own price. Each bar's high is the higher of its close and the one before, so no
+to the quote's own price, each opening at the last one's close, with a made-up volume. Each bar's high is the higher of its close and the one before, so no
 bar's high is above the prices the quotes reach: the bars count in the observed high
 ([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come when the
 path says. Outside the regular session it has no bars.

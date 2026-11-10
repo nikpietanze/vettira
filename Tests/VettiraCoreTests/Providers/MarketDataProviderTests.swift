@@ -17,6 +17,11 @@ private struct CannedProvider: MarketDataProvider {
             },
             unknownSymbols: symbols.filter { known[$0] == nil })
     }
+
+    /// Not asked for in these tests.
+    func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
+        throw .unavailable
+    }
 }
 
 @Suite struct MarketDataProviderTests {

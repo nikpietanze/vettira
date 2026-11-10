@@ -6,8 +6,9 @@ import Foundation
 /// notice, and Yahoo's terms govern its use (docs/providers.md). No key, no account, no cookie: one
 /// request per symbol, sent one at a time and at most one a second, with a User-Agent that names
 /// Vettira. Each request asks for the day's 5-minute bars, so the same request that brings the
-/// quote brings the day's chart. It reads the regular session's fields and bars only, never an
-/// extended-hours price, and never scrapes a page.
+/// quote brings the day's chart. A longer chart's history is one more request, for one symbol and
+/// timeframe, only when the user opens it (`history(for:timeframe:)`). It reads the regular
+/// session's fields and bars only, never an extended-hours price, and never scrapes a page.
 public actor YahooFinanceProvider: MarketDataProvider {
     public nonisolated let name = "Yahoo Finance (unofficial)"
 
@@ -44,6 +45,34 @@ public actor YahooFinanceProvider: MarketDataProvider {
         return batch
     }
 
+    /// `symbol`'s bars over `timeframe`: one request for the timeframe's range and interval
+    /// (`parameters(for:)`), regular session only, sent in turn with the polls' requests and at
+    /// the same pace.
+    public func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
+        let (range, interval) = Self.parameters(for: timeframe)
+        switch try await chart(for: symbol, range: range, interval: interval) {
+        case .unknown: throw .unknownSymbols([symbol])
+        case .unusable: throw .noUsableQuote([symbol])
+        case .result(let result, let meta):
+            return PriceHistory(
+                symbol: meta.symbol ?? symbol.trimmingCharacters(in: .whitespaces), timeframe: timeframe,
+                bars: Self.bars(result), previousClose: Self.positive(meta.chartPreviousClose), name: meta.name)
+        }
+    }
+
+    /// The chart endpoint's `range` and `interval` for a timeframe.
+    static func parameters(for timeframe: ChartTimeframe) -> (range: String, interval: String) {
+        switch timeframe {
+        case .oneDay: ("1d", "5m")
+        case .fiveDays: ("5d", "15m")
+        case .oneMonth: ("1mo", "60m")
+        case .sixMonths: ("6mo", "1d")
+        case .yearToDate: ("ytd", "1d")
+        case .oneYear: ("1y", "1d")
+        case .fiveYears: ("5y", "1wk")
+        }
+    }
+
     // MARK: One symbol
 
     private enum Outcome {
@@ -52,14 +81,50 @@ public actor YahooFinanceProvider: MarketDataProvider {
         case unusable
     }
 
+    /// The symbol's quote, from the day's chart: the same request brings the day's bars.
     private func quote(for symbol: String) async throws(ProviderError) -> Outcome {
+        let (range, interval) = Self.parameters(for: .oneDay)
+        let fetched = try await chart(for: symbol, range: range, interval: interval)
+        guard case .result(let result, let meta) = fetched else {
+            if case .unknown = fetched { return .unknown }
+            return .unusable
+        }
+        guard let price = meta.regularMarketPrice, price > 0,
+              let time = meta.regularMarketTime, time > 0
+        else { return .unusable }
+        return .quote(Quote(
+            symbol: meta.symbol ?? symbol.trimmingCharacters(in: .whitespaces),
+            price: price,
+            timestamp: Date(timeIntervalSince1970: time),
+            source: name,
+            sessionHigh: meta.regularMarketDayHigh.flatMap { $0 > 0 ? $0 : nil },
+            session: Self.session(at: time, regular: meta.currentTradingPeriod?.regular),
+            providerDelay: nil,
+            previousClose: Self.positive(meta.chartPreviousClose),
+            intraday: Self.bars(result),
+            name: meta.name,
+            dayVolume: Self.volume(meta.regularMarketVolume),
+            sessionLow: Self.positive(meta.regularMarketDayLow)))
+    }
+
+    private enum Fetched {
+        case result(ChartResponse.Result, ChartResponse.Meta)
+        /// Yahoo doesn't know the symbol.
+        case unknown
+        /// Yahoo answered without a result for it.
+        case unusable
+    }
+
+    /// One request to the chart endpoint for `symbol` over `range` at `interval`, regular session
+    /// only, and its result; or the error that stops it.
+    private func chart(for symbol: String, range: String, interval: String) async throws(ProviderError) -> Fetched {
         let trimmed = symbol.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty,
               let path = trimmed.addingPercentEncoding(withAllowedCharacters: Self.symbolAllowed),
               var components = URLComponents(string: Self.chartURL + path)
         else { return .unknown }
         components.queryItems = [
-            URLQueryItem(name: "range", value: "1d"), URLQueryItem(name: "interval", value: "5m"),
+            URLQueryItem(name: "range", value: range), URLQueryItem(name: "interval", value: interval),
             URLQueryItem(name: "includePrePost", value: "false"),
         ]
 
@@ -91,23 +156,12 @@ public actor YahooFinanceProvider: MarketDataProvider {
         guard let result = chart.result?.first, let meta = result.meta else {
             return chart.error != nil ? .unknown : .unusable
         }
-        guard let price = meta.regularMarketPrice, price > 0,
-              let time = meta.regularMarketTime, time > 0
-        else { return .unusable }
-        return .quote(Quote(
-            symbol: meta.symbol ?? trimmed,
-            price: price,
-            timestamp: Date(timeIntervalSince1970: time),
-            source: name,
-            sessionHigh: meta.regularMarketDayHigh.flatMap { $0 > 0 ? $0 : nil },
-            session: Self.session(at: time, regular: meta.currentTradingPeriod?.regular),
-            providerDelay: nil,
-            previousClose: Self.positive(meta.chartPreviousClose),
-            intraday: Self.bars(result)))
+        return .result(result, meta)
     }
 
     /// The result's bars, oldest first. A missing, zero or negative close is a gap (Yahoo sends
     /// `null` for a bar with no trades), and a bar whose time isn't after the one before is dropped.
+    /// Open, low and volume are read when they're there; without them a bar still has its close.
     private static func bars(_ result: ChartResponse.Result) -> [PriceBar] {
         guard let times = result.timestamp else { return [] }
         let prices = result.indicators?.quote?.first
@@ -119,9 +173,17 @@ public actor YahooFinanceProvider: MarketDataProvider {
             bars.append(PriceBar(
                 timestamp: Date(timeIntervalSince1970: time),
                 close: positive(prices?.close?[safe: index] ?? nil),
-                high: positive(prices?.high?[safe: index] ?? nil)))
+                high: positive(prices?.high?[safe: index] ?? nil),
+                open: positive(prices?.open?[safe: index] ?? nil),
+                low: positive(prices?.low?[safe: index] ?? nil),
+                volume: volume(prices?.volume?[safe: index] ?? nil)))
         }
         return bars
+    }
+
+    /// A whole, non-negative number of shares.
+    private static func volume(_ value: Double?) -> Int? {
+        value.flatMap { $0.isFinite && $0 >= 0 && $0 < 1e15 ? Int($0) : nil }
     }
 
     /// The value when it's a finite price above 0.
@@ -176,6 +238,16 @@ public actor YahooFinanceProvider: MarketDataProvider {
             let regularMarketDayHigh: Double?
             let chartPreviousClose: Double?
             let currentTradingPeriod: TradingPeriods?
+            let longName: String?
+            let shortName: String?
+            let regularMarketVolume: Double?
+            let regularMarketDayLow: Double?
+
+            /// The security's name: its long name, or its short one, trimmed; `nil` without either.
+            var name: String? {
+                [longName, shortName].lazy.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .first { !$0.isEmpty }
+            }
         }
         struct Indicators: Decodable {
             let quote: [Bars]?
@@ -183,6 +255,21 @@ public actor YahooFinanceProvider: MarketDataProvider {
         struct Bars: Decodable {
             let close: [Double?]?
             let high: [Double?]?
+            let open: [Double?]?
+            let low: [Double?]?
+            let volume: [Double?]?
+
+            private enum CodingKeys: String, CodingKey { case close, high, open, low, volume }
+
+            // Close and high as before; an open, low or volume that can't be read is left out.
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                close = try container.decodeIfPresent([Double?].self, forKey: .close)
+                high = try container.decodeIfPresent([Double?].self, forKey: .high)
+                open = try? container.decodeIfPresent([Double?].self, forKey: .open)
+                low = try? container.decodeIfPresent([Double?].self, forKey: .low)
+                volume = try? container.decodeIfPresent([Double?].self, forKey: .volume)
+            }
         }
         struct TradingPeriods: Decodable {
             let regular: Period?

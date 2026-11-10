@@ -53,6 +53,9 @@ final class AppState {
     /// The monitor's provider: Test Connection asks it too, so its request waits its turn behind
     /// the monitor's and keeps to the same pacing.
     @ObservationIgnored private let provider: any MarketDataProvider
+    /// The charts' history, through the same provider, fetched only when a chart's timeframe is
+    /// opened and kept in memory.
+    @ObservationIgnored private let charts: ChartHistoryStore
     @ObservationIgnored private let center: any AlertNotificationCenter
     @ObservationIgnored private let delivery: AlertDelivery
     /// Set as the system notification center's delegate when alerts go there.
@@ -89,6 +92,7 @@ final class AppState {
             clockOffset = 0
         }
         self.provider = provider
+        charts = ChartHistoryStore(provider: provider, now: clock.now)
         // What the alert engine remembers, so a relaunch doesn't alert again for a pullback it
         // already alerted. A file that can't be used is logged and alerts start afresh. Kept only
         // when the settings loaded (`LaunchStorage.alertStateStore`).
@@ -155,6 +159,31 @@ final class AppState {
 
     func diagnostics(at date: Date) -> DiagnosticsSummary {
         DiagnosticsSummary(diagnostics: snapshot.diagnostics, settings: settings, now: date + clockOffset)
+    }
+
+    /// The symbol's latest quote, its high and pullback, while it's monitored.
+    func state(of symbol: TickerSymbol) -> SymbolSnapshot? {
+        snapshot.symbols[symbol]
+    }
+
+    /// The figures under a symbol's chart: today's, from its latest quote, and its thresholds.
+    func stats(for symbol: TickerSymbol) -> SymbolStats {
+        SymbolStats(
+            state: state(of: symbol),
+            thresholds: settings.thresholds(for: symbol) ?? settings.defaultThresholds)
+    }
+
+    /// The symbol's history over `timeframe`, for its chart: 1D from the polls when they have it,
+    /// otherwise cached or one request, which waits its turn behind the monitor's.
+    func history(for symbol: TickerSymbol, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
+        let history = try await charts.history(for: symbol, timeframe: timeframe, latest: state(of: symbol)?.quote)
+        log.info("Chart: \(symbol, privacy: .public) \(timeframe.rawValue, privacy: .public), \(history.bars.count) bars")
+        return history
+    }
+
+    /// The symbol's history over `timeframe` while it's cached, without asking for it.
+    func cachedHistory(for symbol: TickerSymbol, timeframe: ChartTimeframe) async -> PriceHistory? {
+        await charts.cached(for: symbol, timeframe: timeframe)
     }
 
     /// The symbol Test Connection asks for: the menu bar's, or SPY while the watchlist is empty.

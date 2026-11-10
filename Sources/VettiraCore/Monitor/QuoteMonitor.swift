@@ -299,9 +299,12 @@ public actor QuoteMonitor {
         let day = calendar.status(at: price.timestamp)?.session.day
         let sameSession = day != nil && day == calendar.status(at: base.timestamp)?.session.day
         merged.symbol = base.symbol
+        merged.name = merged.name ?? base.name
         merged.sessionHigh = sameSession ? base.sessionHigh : nil
         merged.previousClose = sameSession ? base.previousClose : nil
         merged.intraday = sameSession ? base.intraday : []
+        merged.dayVolume = sameSession ? base.dayVolume : nil
+        merged.sessionLow = sameSession ? base.sessionLow : nil
         return merged
     }
 

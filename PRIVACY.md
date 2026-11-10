@@ -36,7 +36,9 @@ General, Login Items.
 
 Vettira reaches only Yahoo Finance. It sends requests to Yahoo's unofficial, undocumented
 `v8/finance/chart` endpoint: one request per enabled symbol on your watchlist, each time it
-updates, and one more for one symbol each time you press Test Connection in Settings. In regular
+updates, one more for one symbol each time you press Test Connection in Settings, and one for
+one symbol each time you pick a timeframe in its chart whose history Vettira isn't keeping (which
+it keeps in memory only, for minutes to hours, and never writes to disk). In regular
 hours it also keeps one connection open to Yahoo's unofficial, undocumented streaming quote feed
 (`streamer.finance.yahoo.com`), and sends it the symbols to stream: your enabled symbols, again as
 they change. They carry no account, no key and no cookie, and a User-Agent that names Vettira.

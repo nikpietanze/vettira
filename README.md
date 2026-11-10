@@ -95,7 +95,8 @@ Vettira is a light client: one request per enabled symbol per update, never in p
 one a second, and in regular hours one streaming connection for the whole watchlist; while it's
 live, updates slow to once a minute. It sends a User-Agent that names Vettira (never a browser's),
 and backs off when Yahoo rate-limits it, errs or drops the connection. It reads no web pages and
-downloads no history. **Test Connection**, in Settings, asks for one quote and says plainly what
+downloads no history in the background: a symbol's chart asks for a longer timeframe only when you
+pick it, one request, kept in memory for a while. **Test Connection**, in Settings, asks for one quote and says plainly what
 came back or what went wrong. The requests, the fields Vettira reads and each error it can show:
 [docs/providers.md](docs/providers.md).
 
@@ -214,8 +215,8 @@ a notification, worded as a possible reversal, never advice. Closing a window le
 running in the menu bar, still monitoring, until you pick **Quit Vettira**.
 
 **Open Dashboard**, in that popover, opens a window with the whole watchlist in a table: each
-symbol's price, high (session or observed), change from the high, thresholds, quote time, data age
-and last warning, then the connection's health and diagnostics. Add a symbol by its ticker, search
+symbol's chart of the day, price, high (session or observed), change from the high, thresholds,
+quote time, data age and last warning, then the connection's health and diagnostics. Add a symbol by its ticker, search
 the list, drag rows or use the arrows to reorder it, pin symbols to the top, turn one off to stop
 updating it, give one its own thresholds, or pick the one the menu bar shows. **Settings…** (in the
 popover and the dashboard, or Cmd-, while a window is open) sets the update interval, how old a
@@ -223,6 +224,15 @@ quote can be before it's stale, the default thresholds, how often the menu bar t
 alert sound and Launch at Login, and has **Test Connection**. Each
 change is saved as you make it. While one of its windows is open Vettira shows in the Dock and the
 app switcher; closing the last one takes it back to the menu bar only.
+
+**A symbol's chart.** Click a symbol in the dashboard or the popover to open its chart in a window
+of its own: the price and its change over the period, green when it's up and red when it's down
+(not advice), an area chart with the previous close dotted on 1D, and timeframes from 1D to 5Y.
+Hover over it for a crosshair with the time (ET), price, change and volume. Under it are the day's
+open, previous close and volume, its high and low as Yahoo gives them for the regular session,
+and Vettira's own figures: the session or observed high, the change from it and the thresholds. 1D moves with each update; a longer timeframe is one
+request to Yahoo when you pick it, kept for a while (minutes for 5D, hours for a year), so
+switching back is instant.
 
 ## Privacy
 

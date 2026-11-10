@@ -93,10 +93,10 @@ import VettiraCore
         let open = YahooFixtures.regularStart
         #expect(quote.previousClose == YahooFixtures.previousClose)
         #expect(quote.intraday == [
-            PriceBar(timestamp: Date(timeIntervalSince1970: open), close: 751.2, high: 751.5),
-            PriceBar(timestamp: Date(timeIntervalSince1970: open + 300), close: 751.9, high: 752.1),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open), close: 751.2, high: 751.5, open: 750.9, low: 750.8, volume: 1200),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open + 300), close: 751.9, high: 752.1, open: 751.2, low: 751.1, volume: 900),
             PriceBar(timestamp: Date(timeIntervalSince1970: open + 600), close: nil, high: nil),
-            PriceBar(timestamp: Date(timeIntervalSince1970: open + 900), close: 752.4, high: 752.6),
+            PriceBar(timestamp: Date(timeIntervalSince1970: open + 900), close: 752.4, high: 752.6, open: 751.9, low: 751.8, volume: 700),
         ])
         // The quote's own fields are the meta's, as before.
         #expect(quote.price == 752.68)
