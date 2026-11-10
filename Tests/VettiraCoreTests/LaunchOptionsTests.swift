@@ -111,3 +111,87 @@ func aScratchDirectoryHoldsTheAlertStateAndApplicationSupportIsNotUsed(arguments
     #expect(!LaunchOptions.parse(["Vettira", "--demo"]).keepsAlertState)
     #expect(!LaunchOptions.parse(["Vettira"], environment: ["VETTIRA_DEMO": "1"]).keepsAlertState)
 }
+
+// A snapshot run renders the app's own views to PNG files, offscreen, and quits. It's a Debug
+// option like the others: a release build ignores every one of them.
+
+private let shots = URL(filePath: "/tmp/shots", directoryHint: .isDirectory)
+
+@Test func aSnapshotRunNamesItsDirectoryAndIsADemo() {
+    let options = LaunchOptions.parse(["Vettira", "--snapshot", "/tmp/shots", "--settings-dir", "/tmp/check"])
+    #expect(options.snapshot == LaunchOptions.Snapshot(directory: shots))
+    #expect(options.snapshot?.after == nil)
+    #expect(options.demo)
+    #expect(options.notifications == .log)
+}
+
+@Test func aSnapshotCanWaitAGivenTime() {
+    let options = LaunchOptions.parse(["Vettira", "--snapshot-after", "5", "--snapshot", "/tmp/shots"])
+    #expect(options.snapshot?.after == 5)
+    #expect(options.snapshot?.directory.path == "/tmp/shots")
+}
+
+@Test func theEnvironmentNamesTheSnapshot() {
+    let options = LaunchOptions.parse(
+        ["Vettira"], environment: ["VETTIRA_SNAPSHOT_DIR": "/tmp/shots", "VETTIRA_SNAPSHOT_AFTER": "12.5"])
+    #expect(options.snapshot == LaunchOptions.Snapshot(directory: shots, after: 12.5))
+    #expect(options.demo)
+}
+
+@Test(arguments: [
+    ["Vettira", "--snapshot-after", "5"],
+    ["Vettira", "--snapshot"],
+])
+func noSnapshotWithoutADirectory(arguments: [String]) {
+    #expect(LaunchOptions.parse(arguments) == LaunchOptions())
+    #expect(LaunchOptions.parse(["Vettira"], environment: ["VETTIRA_SNAPSHOT_DIR": ""]) == LaunchOptions())
+}
+
+@Test(arguments: ["-1", "soon", "nan", "inf"])
+func aWaitThatIsntSecondsIsIgnored(value: String) {
+    let options = LaunchOptions.parse(["Vettira", "--snapshot", "/tmp/shots", "--snapshot-after", value])
+    #expect(options.snapshot == LaunchOptions.Snapshot(directory: shots))
+}
+
+@Test func aDebugBuildReadsItsOptions() {
+    let options = LaunchOptions.launch(
+        ["Vettira", "--demo", "--snapshot", "/tmp/shots"], environment: ["VETTIRA_SETTINGS_DIR": "/tmp/check"],
+        debugBuild: true)
+    #expect(options.demo)
+    #expect(options.settingsDirectory?.path == "/tmp/check")
+    #expect(options.snapshot?.directory.path == "/tmp/shots")
+}
+
+@Test func aReleaseBuildIgnoresEveryOption() {
+    let options = LaunchOptions.launch(
+        ["Vettira", "--demo", "--settings-dir", "/tmp/check", "--notify", "--snapshot", "/tmp/shots",
+         "--snapshot-after", "5"],
+        environment: ["VETTIRA_DEMO": "1", "VETTIRA_SETTINGS_DIR": "/tmp/check", "VETTIRA_NOTIFY": "1",
+                      "VETTIRA_SNAPSHOT_DIR": "/tmp/shots", "VETTIRA_SNAPSHOT_AFTER": "5"],
+        debugBuild: false)
+    #expect(options == LaunchOptions())
+    #expect(options.snapshot == nil)
+    #expect(!options.demo)
+    #expect(options.notifications == .system)
+}
+
+// Without a given time, a snapshot waits for every symbol's stronger warning, as the demo sends
+// them about a minute after launch, and renders what it has if they haven't all come in three
+// minutes.
+
+@Test func aSnapshotWaitsForEverySymbolsStrongerWarning() {
+    let snapshot = LaunchOptions.Snapshot(directory: URL(filePath: "/tmp/shots"))
+    var qqq = SymbolSnapshot(symbol: displayTicker("QQQ"))
+    #expect(!snapshot.isDue(displaySnapshot([spy(100.2, alert: earlyWarning()), qqq]), elapsed: 60))
+    #expect(!snapshot.isDue(displaySnapshot([spy(100.0, alert: strongerWarning()), qqq]), elapsed: 60))
+    qqq.lastAlert = strongerWarning()
+    #expect(snapshot.isDue(displaySnapshot([spy(100.0, alert: strongerWarning()), qqq]), elapsed: 60))
+    #expect(snapshot.isDue(displaySnapshot([spy(100.2, alert: earlyWarning())]), elapsed: 180))
+    #expect(!snapshot.isDue(displaySnapshot([spy(100.2, alert: earlyWarning())]), elapsed: 179))
+}
+
+@Test func aSnapshotWithAGivenTimeWaitsJustThat() {
+    let snapshot = LaunchOptions.Snapshot(directory: URL(filePath: "/tmp/shots"), after: 5)
+    #expect(!snapshot.isDue(displaySnapshot([spy(100.0, alert: strongerWarning())]), elapsed: 4))
+    #expect(snapshot.isDue(displaySnapshot([spy(100.2)]), elapsed: 5))
+}

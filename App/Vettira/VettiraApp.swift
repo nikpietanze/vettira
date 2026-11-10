@@ -30,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let options = Self.launchOptions
         let state = AppState(options: options)
         self.state = state
+        #if DEBUG
+        if let snapshot = options.snapshot {
+            // Renders the views offscreen, then quits: no menu-bar item, no window on screen.
+            let menuBar = MenuBarController(state: state, remembersFrames: false, inMenuBar: false)
+            self.menuBar = menuBar
+            SnapshotRenderer(state: state, button: menuBar.button, snapshot: snapshot).start()
+            return
+        }
+        #endif
         menuBar = MenuBarController(state: state, remembersFrames: options.remembersWindowFrames)
     }
 
@@ -37,13 +46,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar?.showSettings()
     }
 
-    /// Only a Debug build reads its launch options (`--demo`, `--settings-dir`, `--notify`, or
-    /// their environment variables).
+    /// Only a Debug build reads its launch options (`--demo`, `--settings-dir`, `--notify`,
+    /// `--snapshot`, or their environment variables).
     private static var launchOptions: LaunchOptions {
         #if DEBUG
-        LaunchOptions.parse(ProcessInfo.processInfo.arguments, environment: ProcessInfo.processInfo.environment)
+        let debugBuild = true
         #else
-        LaunchOptions()
+        let debugBuild = false
         #endif
+        return LaunchOptions.launch(
+            ProcessInfo.processInfo.arguments, environment: ProcessInfo.processInfo.environment,
+            debugBuild: debugBuild)
     }
 }

@@ -158,8 +158,15 @@ state (`keepsAlertState`), so its made-up highs never reach the user's own file.
 (`LogNotificationCenter`, each notification's full text) and which never asks for notification
 permission, unless it's also launched with `--notify` (`VETTIRA_NOTIFY=1`). A check also neither
 reads nor saves its windows' frames (`remembersWindowFrames`): they live in the app's defaults,
-which the user's own Vettira shares, so a check's windows open at their first size each launch. Release builds ignore
-them all.
+which the user's own Vettira shares, so a check's windows open at their first size each launch.
+`--snapshot <dir>` (`VETTIRA_SNAPSHOT_DIR`) makes a demo run that draws its own pictures
+(`LaunchOptions.Snapshot`): it puts no item in the menu bar and no window on screen, and
+`SnapshotRenderer` (`App/Vettira/SnapshotRenderer.swift`), once every symbol has had its stronger
+warning (`isDue`, at most three minutes) or `--snapshot-after <seconds>`
+(`VETTIRA_SNAPSHOT_AFTER`) after launch, draws the menu-bar button `MenuBarController` keeps up
+to date offscreen, the popover, the dashboard and Settings, the real views on the app's own
+state, in light and dark, into PNG files in that directory, from windows that are never put on
+screen, then quits. Release builds ignore them all (`LaunchOptions.launch`, `debugBuild`).
 
 ## Storage
 

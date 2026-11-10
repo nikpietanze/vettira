@@ -150,7 +150,10 @@ open .build/xcode/Build/Products/Debug/Vettira.app --args --demo --settings-dir 
 about a minute after launch. `--settings-dir` reads and writes `settings.json` in that folder
 instead of your own. With either, alerts go only to the app's log, not to Notification Center,
 unless you add `--notify`. In Xcode, add the same arguments under Product, Scheme, Edit Scheme…,
-Run, Arguments. A Release build ignores them. More: [the demo provider](docs/providers.md#the-demo-provider).
+Run, Arguments. `--snapshot <folder>` makes a demo run that, once the warnings have come (or
+after `--snapshot-after <seconds>`), saves pictures of the menu-bar item, the popover, the
+dashboard and Settings, in light and dark, to that folder, offscreen, and quits. A Release build
+ignores them. More: [the demo provider](docs/providers.md#the-demo-provider).
 
 ### Run the tests
 
