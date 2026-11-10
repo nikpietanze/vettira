@@ -4,12 +4,13 @@ import VettiraCore
 
 /// Messages from Yahoo Finance's streaming quote feed, for the stream's tests.
 ///
-/// The `recorded` ones are real: text frames received once by hand on Monday 9 November 2026,
-/// between 20:30 and 20:40 New York time, on one connection to `?version=2`, with Vettira's
-/// User-Agent. They're market data only. At that hour crypto was in its regular session
-/// (`marketHours` 1), and SPY and AAPL in overnight trading (`marketHours` 4). The regular-session
-/// equity messages are hand-made in the same shape by `pricing(...)`, since the feed was recorded
-/// outside regular hours.
+/// The `recorded` ones are real text frames, market data only, each received on one connection to
+/// `?version=2` with Vettira's User-Agent. The crypto and overnight ones came on Monday 9 November
+/// 2026, between 20:30 and 20:40 New York time, when crypto was in its regular session
+/// (`marketHours` 1) and SPY and AAPL in overnight trading (`marketHours` 4). The SPY and QQQ ones
+/// came in the regular session on Tuesday 10 November 2026, from 09:42 New York time. Prices
+/// outside the regular session that weren't recorded (pre-market, post-market) and broken messages
+/// are made by hand in the same shape by `pricing(...)`.
 enum YahooStreamFixtures {
     /// BTC-USD at 74958.40625 (float32), 01:30:55 UTC on 10 November 2026, regular session, with
     /// every field crypto sends (real).
@@ -26,6 +27,21 @@ enum YahooStreamFixtures {
 
     /// AAPL at 350.62 in overnight trading, 01:31:19 UTC (real).
     static let aaplOvernight = #"{"type":"pricing","message":"CgRBQVBMFVxPr0MYsPmlsbhoKgNOTVMwCDgEReWIo7xlAGCPvdgBBPUCAAAEQf0CGTgaQA=="}"#
+
+    /// SPY at 748.24 (float32) in the regular session, 14:42:09 UTC on 10 November 2026 (real):
+    /// every field an ETF sends in regular hours but the day's high and low.
+    static let spyRegular = #"{"type":"pricing","message":"CgNTUFkVXA87RBjQl8beuGgqA1BDWDAUOAFFI6kVv0jA8pYEZQDNjMCwAVDYAQT1AgDNjMD9AiOpFb8="}"#
+    /// QQQ at 673.37 in the regular session, the same second as `spyRegular` (real).
+    static let qqqRegular = #"{"type":"pricing","message":"CgNRUVEVrlcoRBjQl8beuGgqA05HTTAUOAFFFlhhv0imq7kFZQBcv8CwAWTYAQT1AgBcv8D9AhZYYb8="}"#
+    /// QQQ at 673.325, the next message for it, a second later but with the same time: the feed
+    /// sends its time to the whole second (real).
+    static let qqqSameSecond = #"{"type":"pricing","message":"CgNRUVEVzVQoRBjQl8beuGgqA05HTTAUOAFFCApjv0jWtrkFZYDMwMCwAcgB2AEE9QKAzMDA/QIICmO/"}"#
+    static let regularTime = Date(timeIntervalSince1970: 1_794_321_729)
+
+    /// QQQ at 674.68, a new high for the day, 14:43:39 UTC (real): it also carries the feed's day
+    /// high and low, which it sends only when one changes.
+    static let qqqNewHigh = #"{"type":"pricing","message":"CgNRUVEVhasoRBjwldHeuGgqA05HTTAUOAFFtvovv0jCndMFVYWrKERd4XonRGWAcJXAsAFQ2AEE9QKAcJXA/QK2+i+/"}"#
+    static let qqqNewHighTime = Date(timeIntervalSince1970: 1_794_321_819)
 
     /// A `PricingData` message as the feed sends it, made by hand: `id` (1), `price` (2, float),
     /// `time` (3, sint64 milliseconds) and `marketHours` (7), wrapped in the `pricing` envelope.

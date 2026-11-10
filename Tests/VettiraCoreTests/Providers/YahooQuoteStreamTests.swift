@@ -4,7 +4,9 @@ import VettiraCore
 
 // Expected values come from the recorded messages' own fields (docs/providers.md, "Streamed
 // prices"), read off the wire by hand: BTC-USD's price is the float32 nearest 74958.41 and its
-// time 1794274255000 ms; SPY's and AAPL's are in overnight trading. The rules are AGENTS.md's: one
+// time 1794274255000 ms; the overnight SPY and AAPL are in overnight trading; the regular-session
+// SPY is the float32 nearest 748.24 at 1794321729000 ms, and QQQ 673.37 then 673.325 at that same
+// time, then 674.68 at 1794321819000 ms. The rules are AGENTS.md's: one
 // connection, an honest User-Agent, and an extended-hours price never read.
 
 // A broken test fails within a minute instead of hanging the run.
@@ -43,6 +45,21 @@ import VettiraCore
         #expect(second.timestamp == Fixtures.btcLaterTime)
     }
 
+    @Test func recordedRegularSessionStockAndETFMessagesBecomeQuotes() async throws {
+        let (_, connection) = connect(FakeSocketConnection(messages: [
+            Fixtures.spyRegular, Fixtures.qqqRegular, Fixtures.qqqSameSecond, Fixtures.qqqNewHigh,
+        ]))
+        func quote(_ symbol: String, _ price: Double, _ time: Date) -> Quote {
+            Quote(symbol: symbol, price: price, timestamp: time, source: "Yahoo Finance (unofficial)", session: .regular)
+        }
+        #expect(try await connection.next() == quote("SPY", 748.24, Fixtures.regularTime))
+        #expect(try await connection.next() == quote("QQQ", 673.37, Fixtures.regularTime))
+        // A later price in the same second keeps that second's time.
+        #expect(try await connection.next() == quote("QQQ", 673.325, Fixtures.regularTime))
+        // The feed's day high isn't read as the session high.
+        #expect(try await connection.next() == quote("QQQ", 674.68, Fixtures.qqqNewHighTime))
+    }
+
     @Test func aStreamedQuoteBringsNoHighCloseOrBars() async throws {
         // The feed's day high and previous close aren't the regular session's for certain, so
         // they're left to the chart endpoint.
@@ -55,17 +72,16 @@ import VettiraCore
     }
 
     @Test func anExtendedHoursPriceIsNeverRead() async throws {
-        let regular = Fixtures.pricing("SPY", price: 512.25, time: Fixtures.btcTime)
         let (_, connection) = connect(FakeSocketConnection(messages: [
             Fixtures.spyOvernight, Fixtures.aaplOvernight,
             Fixtures.pricing("SPY", price: 511, time: Fixtures.btcTime, marketHours: 0),
             Fixtures.pricing("SPY", price: 511, time: Fixtures.btcTime, marketHours: 2),
             Fixtures.pricing("SPY", price: 511, time: Fixtures.btcTime, marketHours: 3),
-            regular,
+            Fixtures.spyRegular,
         ]))
         let quote = try await connection.next()
         #expect(quote.symbol == "SPY")
-        #expect(quote.price == 512.25)
+        #expect(quote.price == 748.24)
         #expect(quote.session == .regular)
     }
 
