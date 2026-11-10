@@ -68,7 +68,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
             element.setAccessibilityValue(status.accessibilityValue)
         }
         #if DEBUG
-        if changed { log.info("Menu-bar item accessibility: label \(button.cell?.accessibilityLabel() ?? "none", privacy: .public), title \(button.cell?.accessibilityTitle() ?? "none", privacy: .public)") }
+        if changed { log.info("Menu-bar item accessibility: label \(button.cell?.accessibilityLabel() ?? "none", privacy: .public), title \(button.cell?.accessibilityTitle() ?? "none", privacy: .public), appearance \(button.effectiveAppearance.name.rawValue, privacy: .public)") }
         #endif
     }
 
@@ -78,20 +78,34 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     }
 
     /// The status's text in the menu bar's font with digits all the same width, so the item
-    /// doesn't twitch as a price changes, each piece in its tone's colour: system colours, which follow a light
-    /// or dark menu bar.
+    /// doesn't twitch as a price changes, each piece in its tone's colour: system colours, which follow a light,
+    /// dark or highlighted menu bar.
     static func title(_ status: MenuBarStatus) -> NSAttributedString {
         let title = NSMutableAttributedString()
         for segment in status.segments {
-            let color: NSColor = switch segment.tone {
-            case .normal: .labelColor
-            case .up: .systemGreen
-            case .down: .systemRed
-            case .dimmed: .secondaryLabelColor
+            let color: NSColor = switch segment.tone.ink {
+            case .label(let opacity): label(opacity: opacity)
+            case .green: .systemGreen
+            case .red: .systemRed
             }
             title.append(NSAttributedString(string: segment.text, attributes: [.font: font, .foregroundColor: color]))
         }
         return title
+    }
+
+    /// The label colour at `opacity` of its own. Dynamic, so it resolves when the button draws, in
+    /// the menu bar's appearance, not the app's. `withAlphaComponent` alone would replace the
+    /// label colour's own alpha, which is already under 1 (0.7 in a vibrant light one), so 0.75
+    /// would make it darker there, not softer.
+    private static func label(opacity: Double) -> NSColor {
+        guard opacity < 1 else { return .labelColor }
+        return NSColor(name: nil) { appearance in
+            var label = NSColor.labelColor
+            appearance.performAsCurrentDrawingAppearance {
+                label = NSColor.labelColor.usingColorSpace(.sRGB) ?? .labelColor
+            }
+            return label.withAlphaComponent(label.alphaComponent * opacity)
+        }
     }
 
     @objc private func togglePopover(_ sender: Any?) {

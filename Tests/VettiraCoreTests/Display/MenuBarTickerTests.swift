@@ -148,6 +148,15 @@ private func changes(to price: Double) -> PriceChanges {
         + "so nothing alerts. Quote 6 h old.")
 }
 
+// The user picked "slightly dimmed": the menu bar's own text colour at about 75% opacity, softer
+// than a live price but still easy to read, and never green or red.
+@Test func aDimmedPriceIsTheMenuBarsTextColourSlightlySoftened() {
+    #expect(MenuBarStatus.Tone.dimmed.ink == .label(opacity: 0.75))
+    #expect(MenuBarStatus.Tone.normal.ink == .label(opacity: 1))
+    #expect(MenuBarStatus.Tone.up.ink == .green)
+    #expect(MenuBarStatus.Tone.down.ink == .red)
+}
+
 // A colouring kept from another price isn't put on this one.
 @Test func aChangeToAnotherPriceIsntShown() {
     let shown = status(snapshot(["SPY": 745.00]), changes: changes(to: 741.12))

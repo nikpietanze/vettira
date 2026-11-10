@@ -98,7 +98,7 @@ tested without a UI:
 
 | Type | What it is |
 |---|---|
-| `MenuBarStatus` | The menu bar for one symbol: its ticker and price only (`SPY 741.12`), as segments each with a tone: the characters its last `PriceChange` changed `up` or `down`, the rest `normal`. A price outside regular hours, or older than the staleness tolerance (even between polls), is `dimmed` whatever its last change, and so is a sign there's no price (`SPY …` waiting, `SPY —` no quote, `SPY off`). Its detail says it all in words: the change from the high and its age, or why it's stale or closed, and "possible reversal, not confirmed" while a warning that fired this session is still passed; its accessibility value is the detail and then the last change ("Last change: up from 740.43.") when its colours show |
+| `MenuBarStatus` | The menu bar for one symbol: its ticker and price only (`SPY 741.12`), as segments each with a tone: the characters its last `PriceChange` changed `up` or `down`, the rest `normal`. A price outside regular hours, or older than the staleness tolerance (even between polls), is `dimmed` (the label colour at 75% of its opacity, never green or red) whatever its last change, and so is a sign there's no price (`SPY …` waiting, `SPY —` no quote, `SPY off`). Its detail says it all in words: the change from the high and its age, or why it's stale or closed, and "possible reversal, not confirmed" while a warning that fired this session is still passed; its accessibility value is the detail and then the last change ("Last change: up from 740.43.") when its colours show |
 | `PriceChange`, `PriceChanges` | Which characters of a price changed and which way: the old and new prices compared as displayed, from the left, everything from the first difference to the end changed (all of it when the number of characters changes). `PriceChanges` keeps each symbol's latest price and last change from every snapshot, so each symbol keeps its colours until its own next change, whichever symbol is showing |
 | `MenuBarCycle` | Which symbol the menu bar shows: the enabled symbols in the watchlist's order, starting at the menu-bar symbol, moving on every `menuBarCycle` seconds (off, 3, 5 or 10; 5 by default), or with it off only the menu-bar symbol. It only rotates what the monitor already has: no requests |
 | `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated with each quote: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
@@ -117,8 +117,13 @@ item's title from its button's text.
 
 **The ticker.** The button shows only text, `MenuBarStatus`'s segments as an attributed title in
 the menu bar's font with digits all the same width: `normal` in the label colour, `up` system
-green, `down` system red, `dimmed` the secondary label colour, all dynamic, so they follow a light
-or dark menu bar and the highlighted button. With an empty watchlist it shows the app's chart
+green, `down` system red, as `Tone.ink` says; `dimmed` is the label colour at 75% of its own
+opacity, a little softer than a live price but easy to read, which Core decides and the app
+draws. All are dynamic, so they follow a light, dark or tinted menu bar and the highlighted
+button: each resolves when the button draws, in the menu bar's own appearance (a vibrant one),
+not the app's. The dimmed colour scales the label colour's alpha in that appearance rather than
+replacing it, since the label colour is already translucent there; the secondary label colour was
+too faint to read in the menu bar. With an empty watchlist it shows the app's chart
 icon, so there's still an item to click. `AppState` records each snapshot in its `PriceChanges`
 and keeps the symbol shown last; a task moves it on with `MenuBarCycle.next` every `menuBarCycle`
 seconds, and picking a symbol in the popover or the dashboard shows it straight away, for a

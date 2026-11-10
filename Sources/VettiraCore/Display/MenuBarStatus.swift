@@ -34,8 +34,31 @@ public struct MenuBarStatus: Equatable, Sendable {
         case up
         /// Characters that changed when the price last fell: system red.
         case down
-        /// The secondary text colour: a price that isn't live, or no price.
+        /// The menu bar's own text colour, slightly softened: a price that isn't live, or no price.
         case dimmed
+
+        /// The colour it draws in.
+        public var ink: Ink {
+            switch self {
+            case .normal: .label(opacity: 1)
+            case .up: .green
+            case .down: .red
+            // Softer than a live price but still easy to read on any menu bar, and never green or
+            // red. The system's secondary text colour was too faint to read there.
+            case .dimmed: .label(opacity: 0.75)
+            }
+        }
+    }
+
+    /// A tone's colour, which the app draws with the system's dynamic colours, so it follows a
+    /// light, dark, tinted or highlighted menu bar.
+    public enum Ink: Equatable, Sendable {
+        /// The menu bar's own text colour, at `opacity` (0 to 1).
+        case label(opacity: Double)
+        /// System green.
+        case green
+        /// System red.
+        case red
     }
 
     public struct Segment: Equatable, Sendable {
