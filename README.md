@@ -14,7 +14,7 @@ menu bar and notifies you when a price falls from its session high by a threshol
 
 > **Status: in progress.** The logic (quotes, market sessions, session highs, alerts and
 > settings), the menu bar, notifications, the dashboard with watchlist editing, and Settings are
-> built. There's no release to download yet: [build it](#build-and-run) with Xcode.
+> built. [Install a release](#install), or [build it](#build-and-run) with Xcode.
 
 <p align="center">
   <img src="docs/assets/menu-bar.png" alt="Vettira's menu-bar item: its icon, a small chart of SPY's price today above the dotted line of the previous close, and SPY's price and change from its high" width="201">
@@ -99,9 +99,33 @@ downloads no history. **Test Connection**, in Settings, asks for one quote and s
 came back or what went wrong. The requests, the fields Vettira reads and each error it can show:
 [docs/providers.md](docs/providers.md).
 
+## Install
+
+Each release is on the [Releases page](https://github.com/nikpietanze/vettira/releases) as
+`Vettira-<version>.zip`, with its SHA-256 in `Vettira-<version>.zip.sha256`. It needs **macOS 14
+(Sonoma) or later**. If there's no release yet, [build it](#build-and-run) instead.
+
+1. Download both files, and check the zip in the folder you saved them to:
+   `shasum -a 256 -c Vettira-<version>.zip.sha256` should say `OK`.
+2. Open the zip, and drag **Vettira** into your **Applications** folder.
+3. Open it the first time. The app is signed ad hoc, not with an Apple Developer ID, and isn't
+   notarized (that needs a paid Apple Developer account, which the project doesn't have yet), so
+   macOS won't open it with a double-click at first:
+   - **macOS 14:** Control-click (or right-click) Vettira in Applications, choose **Open**, then
+     **Open** again.
+   - **macOS 15 or later:** double-click it and close the warning, then open **System Settings →
+     Privacy & Security**, scroll to Security, click **Open Anyway** beside Vettira, and confirm.
+
+   After that it opens like any other app. It's in the menu bar, near the clock, with no Dock
+   icon, and its watchlist starts empty: click it, pick **Open Dashboard**, and add a symbol by its
+   ticker (SPY, say). More in [Using it](#using-it).
+
+To update, quit Vettira (**Quit Vettira** in its popover), replace it in Applications with the
+new one, and open it the same way. Your watchlist and settings stay where they are.
+
 ## Build and run
 
-There's no download yet, so you build Vettira yourself. You need:
+To build Vettira yourself, you need:
 
 - **macOS 14 (Sonoma) or later** to run it.
 - **Xcode 16 or later** to build it (the package needs Swift 6.0), from the App Store or
