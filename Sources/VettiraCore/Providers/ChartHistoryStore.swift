@@ -4,18 +4,20 @@ import Foundation
 ///
 /// It keeps to the light-client rule (docs/providers.md, "History for the chart"):
 ///
-/// - **1D needs no request** while the symbol has a polled quote with the day's bars: the polls
-///   already bring them, so it refreshes with them.
+/// - **1D is a minute's bars**, asked for when its chart opens and again once a minute while it's
+///   open in regular hours (`ChartTimeframe.refreshes(at:calendar:)`); until they come, or while
+///   they're an earlier session's than the polls', the chart shows the polls' 5-minute bars
+///   (`oneDay(fetched:polled:)`).
 /// - **One request per symbol and timeframe**, through the provider, which sends it in turn with
 ///   the polls' requests and at the same pace, never alongside one. Asking again for one that's in
 ///   flight waits for that request rather than sending another.
-/// - **Cached** for the timeframe's `cacheLifetime` (5 minutes for 1D to 12 hours for 5Y), in
-///   memory only; nothing is written to disk.
+/// - **Cached** for the timeframe's `cacheLifetime` (just under a minute for 1D to 12 hours for
+///   5Y), in memory only; nothing is written to disk.
 /// - **Backs off.** After the provider rate-limits, refuses or can't be reached, nothing is asked
 ///   for a minute, or for as long as it said to wait; after any other failure, that symbol and
 ///   timeframe aren't asked again for a minute.
-/// - **Nothing in the background:** it fetches only when `history(for:timeframe:latest:)` is
-///   called, which the app does when the user opens a timeframe.
+/// - **Nothing in the background:** it fetches only when `history(for:timeframe:)` is called,
+///   which the app does when the user opens a timeframe, and for 1D each minute it stays open.
 public actor ChartHistoryStore {
     private struct Key: Hashable {
         let symbol: String
@@ -39,13 +41,9 @@ public actor ChartHistoryStore {
         self.now = now
     }
 
-    /// `symbol`'s history over `timeframe`: for 1D, the day's bars of `latest` (the symbol's
-    /// latest polled quote) when it has them; otherwise the cached history while it's fresh, or
-    /// one request. Throws the provider's error, or the last one again while backing off.
-    public func history(
-        for symbol: TickerSymbol, timeframe: ChartTimeframe, latest: Quote?
-    ) async throws(ProviderError) -> PriceHistory {
-        if timeframe == .oneDay, let day = Self.polledDay(latest) { return day }
+    /// `symbol`'s history over `timeframe`: the cached history while it's fresh, or one request.
+    /// Throws the provider's error, or the last one again while backing off.
+    public func history(for symbol: TickerSymbol, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
         let key = Key(symbol: symbol.rawValue, timeframe: timeframe)
         let time = now()
         if let cached = cache[key], time < cached.expires { return cached.history }
@@ -69,13 +67,23 @@ public actor ChartHistoryStore {
         return try await task.value.get()
     }
 
-    /// 1D from a polled quote: its day's bars and previous close, when it has bars. The chart
-    /// shows it straight away, and it changes with each poll.
+    /// 1D from a polled quote: its day's 5-minute bars and previous close, when it has bars. The
+    /// chart shows it straight away, until the minute's bars come or when they can't.
     public nonisolated static func polledDay(_ quote: Quote?) -> PriceHistory? {
         guard let quote, !quote.intraday.isEmpty else { return nil }
         return PriceHistory(
             symbol: quote.symbol, timeframe: .oneDay, bars: quote.intraday, previousClose: quote.previousClose,
             name: quote.name)
+    }
+
+    /// What 1D shows: the fetched minute bars, unless the polls' bars (`polledDay(_:)`) are a
+    /// later session's, as they are once the market opens on a chart asked for before it.
+    public nonisolated static func oneDay(fetched: PriceHistory?, polled: PriceHistory?) -> PriceHistory? {
+        guard let fetched, fetched.timeframe == .oneDay, let fetchedStart = fetched.bars.first?.timestamp else { return polled }
+        guard let polledStart = polled?.bars.first?.timestamp,
+              MarketCalendar.day(of: polledStart) > MarketCalendar.day(of: fetchedStart)
+        else { return fetched }
+        return polled
     }
 
     /// The fresh cached history, without asking the provider: what the chart can show at once.

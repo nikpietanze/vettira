@@ -18,6 +18,8 @@ final class AppState {
     /// The monitor's time, moved every few seconds, so the menu bar's staleness keeps up between
     /// polls (the monitor waits up to 15 minutes between them while it backs off).
     private(set) var now: Date
+    /// The windows open on screen, by ID: a chart refreshes only while its window is open.
+    private(set) var openWindows: Set<String> = []
     /// Why the settings couldn't be read or saved, when they couldn't.
     private(set) var settingsProblem: String?
     private(set) var notifications: NotificationAuthorization = .notDetermined
@@ -173,12 +175,17 @@ final class AppState {
             thresholds: settings.thresholds(for: symbol) ?? settings.defaultThresholds)
     }
 
-    /// The symbol's history over `timeframe`, for its chart: 1D from the polls when they have it,
-    /// otherwise cached or one request, which waits its turn behind the monitor's.
+    /// The symbol's history over `timeframe`, for its chart: the cached history while it's fresh,
+    /// otherwise one request, which waits its turn behind the monitor's.
     func history(for symbol: TickerSymbol, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
-        let history = try await charts.history(for: symbol, timeframe: timeframe, latest: state(of: symbol)?.quote)
+        let history = try await charts.history(for: symbol, timeframe: timeframe)
         log.info("Chart: \(symbol, privacy: .public) \(timeframe.rawValue, privacy: .public), \(history.bars.count) bars")
         return history
+    }
+
+    /// The windows now open, from `MenuBarController`, which keeps closed windows to show again.
+    func windowsChanged(_ open: Set<String>) {
+        if openWindows != open { openWindows = open }
     }
 
     /// The symbol's history over `timeframe` while it's cached, without asking for it.

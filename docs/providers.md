@@ -100,9 +100,9 @@ Clicking a symbol in the dashboard or the popover opens its chart, with timefram
 
 | Timeframe | `range` | `interval` | Kept for |
 |---|---|---|---|
-| 1D | `1d` | `5m` | no request while the symbol updates: the updates bring these bars |
-| 5D | `5d` | `15m` | 15 minutes |
-| 1M | `1mo` | `60m` | an hour |
+| 1D | `1d` | `1m` | just under a minute: asked for again once a minute while it's open |
+| 5D | `5d` | `5m` | 5 minutes |
+| 1M | `1mo` | `30m` | 30 minutes |
 | 6M, YTD, 1Y | `6mo`, `ytd`, `1y` | `1d` | 4 hours |
 | 5Y | `5y` | `1wk` | 12 hours |
 
@@ -116,8 +116,13 @@ history:
 - **Kept in memory, for about a bar** (the table), so picking a timeframe again, or reopening the
   window, sends nothing. Picking it while its request is in flight waits for that request. Nothing
   is written to disk, and the history is gone when Vettira quits.
-- **1D needs no request** while the symbol is monitored: its bars come with each update, so the
-  chart moves with them. A symbol that's off asks once, kept for 5 minutes.
+- **1D refreshes once a minute while it's open.** Its minute bars are asked for when the window
+  opens on 1D, and again each minute while it stays open in regular hours, so each new minute's
+  bar joins the line; outside regular hours it asks once, and a window left open from before the
+  open starts asking at the open. Each request takes its turn with the updates' like any other.
+  Until the first comes back, if it fails, or while it's an earlier session's than the updates',
+  the chart shows the updates' own 5-minute bars. The updates themselves stay at 5-minute bars,
+  and a closed window asks for nothing, so a closed chart costs nothing.
 - **Backs off.** After Yahoo rate-limits (for as long as it asked, at least a minute), refuses or
   can't be reached, no history is asked for at all for a minute; after any other failure, not
   that symbol and timeframe.
@@ -125,8 +130,10 @@ history:
 From each response it reads `meta.symbol`, `meta.longName` (or `shortName`) for the window's
 heading, `meta.chartPreviousClose` (the close before the first bar, what the period's change is
 measured from) and the bars' `timestamp` with `indicators.quote[0]`'s `open`, `high`, `low`,
-`close` and `volume`. A bar with no `close` (`null`) is a gap in the line. The line ends at the
-symbol's latest quote, so between requests it moves with the updates. A symbol Yahoo doesn't know
+`close` and `volume`. A bar with no `close` (`null`) is a gap in the line. The line is straight
+from one bar's close to the next, never smoothed, so it never shows a price that didn't trade,
+and the crosshair snaps to the nearest bar and shows its own time and close. The line ends at the
+symbol's latest quote, so between requests it moves with the updates and the stream. A symbol Yahoo doesn't know
 throws `unknownSymbols`, and the window shows each error's message and next step.
 
 The chart window's figures (open, high, low, previous close, volume) are the day's, from the
@@ -276,12 +283,15 @@ testing doesn't change when the warnings come.
 Its history for every timeframe is made up too, so the chart window can be tried without Yahoo:
 a random walk, the same on every run for each symbol and timeframe, on the market's trading days
 (weekdays where the calendar doesn't reach) in regular hours, ending at the symbol's demo price,
-with opens, highs, lows and volumes. Its 1D is the quote's own day.
+with opens, highs, lows and volumes. Its 1D is the quote's own day, a bar a minute.
 
 Each quote has a made-up day for the chart too: a previous close 0.60% below the base price or
-above it (the symbol decides which, so a watchlist shows days both up and down), and a 5-minute
-bar from the open of the moment's session up to that moment, wandering from below the base price
-to the quote's own price, each opening at the last one's close, with a made-up volume. Each bar's high is the higher of its close and the one before, so no
-bar's high is above the prices the quotes reach: the bars count in the observed high
+above it (the symbol decides which, so a watchlist shows days both up and down), and a random
+walk a bar a minute, the same on every run for each symbol and day, from the open of the
+moment's session up to that moment, from below the base price to the quote's own price, each bar
+opening at the last one's close, with a made-up volume. The quote carries it as 5-minute bars,
+five of its minutes each, as Yahoo's updates do. A close that would go above the base price or
+the quote's price, whichever is higher, is turned back below it, and no bar's high goes above
+it, so no bar's high is above the prices the quotes reach: the bars count in the observed high
 ([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come when the
 path says. Outside the regular session it has no bars.

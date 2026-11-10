@@ -13,9 +13,11 @@ import Foundation
 ///
 /// Each quote also has a made-up day for the chart: a previous close 0.60% below or above the
 /// base price (the symbol decides which, so a watchlist shows days both up and down), and a
-/// 5-minute bar from the open up to now, wandering from below the base price to the quote's
-/// price. No bar's high is above the prices the quotes reach, so the high stays the quotes' and
-/// the warnings come when the path says.
+/// random walk a bar a minute from the open up to now, the same on every run for each symbol and
+/// day, from below the base price to the quote's price (`day(_:until:endingAt:)`). The polls'
+/// quotes carry it as 5-minute bars, five of its minutes each, as Yahoo's do; the chart's 1D is
+/// its minutes. No bar's high is above the prices the quotes reach, so the high stays the
+/// quotes' and the warnings come when the path says.
 ///
 /// Its history, for the chart's longer timeframes, is made up too: a random walk the same on every
 /// run for each symbol and timeframe, on the market's trading days in regular hours, that ends at
@@ -54,25 +56,31 @@ public actor DemoProvider: MarketDataProvider {
     }
 
     /// The symbol's made-up bars over `timeframe`, ending at its quote's price at its current step.
-    /// 1D is the quote's own day.
+    /// 1D is the quote's own day, a bar a minute.
     public func history(for symbol: String, timeframe: ChartTimeframe) async throws(ProviderError) -> PriceHistory {
         let symbol = symbol.uppercased()
         let quote = quote(for: symbol)
         guard timeframe != .oneDay else {
-            return PriceHistory(symbol: symbol, timeframe: timeframe, bars: quote.intraday, previousClose: quote.previousClose)
+            return PriceHistory(
+                symbol: symbol, timeframe: timeframe, bars: Self.day(symbol, until: quote.timestamp, endingAt: percent(for: symbol)),
+                previousClose: quote.previousClose)
         }
         return Self.history(symbol, timeframe, endingAt: quote.price, now: quote.timestamp)
     }
 
-    private func quote(for symbol: String) -> Quote {
-        let step = steps[symbol, default: 0]
+    /// Percent above the symbol's base price at its current step.
+    private func percent(for symbol: String) -> Double {
         let path = Self.path(for: symbol)
-        let percent = path[min(step, path.count - 1)]
+        return path[min(steps[symbol, default: 0], path.count - 1)]
+    }
+
+    private func quote(for symbol: String) -> Quote {
+        let percent = percent(for: symbol)
         let time = now()
         return Quote(
             symbol: symbol, price: Self.basePrice(symbol) * (1 + percent / 100), timestamp: time, source: name,
             session: .regular, previousClose: Self.previousClose(symbol),
-            intraday: Self.bars(symbol, until: time, endingAt: percent))
+            intraday: Self.fiveMinuteBars(Self.day(symbol, until: time, endingAt: percent)))
     }
 
     /// A symbol's previous close: 0.60% below its base price or above it, the same on every run.
@@ -80,30 +88,56 @@ public actor DemoProvider: MarketDataProvider {
         basePrice(symbol) * (1 + (seed(symbol) % 2 == 0 ? -0.6 : 0.6) / 100)
     }
 
-    /// A 5-minute bar from the open of `now`'s session to `now`: a wave that starts 0.30% below the
-    /// base price and settles, by `now`, on the price `percent` above the base, the quote's. A
-    /// bar's high is the higher of its close and the one before, so no bar's high is above the
-    /// base price or the quote's price, whichever is higher. None outside the regular session or
-    /// the calendar.
-    static func bars(
+    /// A bar a minute from the open of `now`'s session up to `now`: a random walk, the same on
+    /// every run for the symbol and the day, that starts 0.30% below the base price and ends on
+    /// the price `percent` above the base, the quote's. Its moves are the day's own, so the walk
+    /// up to an earlier `now` has the same shape; a bridge then pins its ends. A close that would
+    /// go above the base price or the quote's price, whichever is higher, is turned back below
+    /// it, and no bar's high goes above it either. None outside the regular session or the
+    /// calendar.
+    static func day(
         _ symbol: String, until now: Date, endingAt percent: Double, calendar: MarketCalendar = .usEquities
     ) -> [PriceBar] {
         guard let status = calendar.status(at: now), status.state == .regular else { return [] }
+        let sessionOpen = status.session.open
+        let count = Int((now.timeIntervalSince(sessionOpen) / 60).rounded(.up))
+        guard count > 0 else { return [] }
         let base = basePrice(symbol)
-        let span = now.timeIntervalSince(status.session.open)
-        let phase = Double(seed(symbol) % 7)
+        let cap = max(0, percent)
+        let start = -0.30
+        var random = SeededRandom(seed: UInt64(seed(symbol)) &* 1_000_003 &+ UInt64(sessionOpen.timeIntervalSince1970 / 86_400))
+        // A minute's move: about 0.04%, as a broad ETF's is.
+        var walk = [0.0]
+        for _ in 1..<count { walk.append(walk[walk.count - 1] + 0.04 * random.normal()) }
+        let last = walk[count - 1]
+        var bars: [PriceBar] = []
         var previous: Double?
-        return stride(from: 0, to: span, by: 300).map { elapsed in
-            let left = 1 - elapsed / span
-            // The wave runs from 0.55% to 0.05% below the base.
-            let close = base * (1 + ((-0.30 + 0.25 * sin(elapsed / 1500 + phase)) * left + percent * (1 - left)) / 100)
-            defer { previous = close }
+        for minute in 0..<count {
+            let share = count > 1 ? Double(minute) / Double(count - 1) : 1
+            var level = start + (percent - start) * share + walk[minute] - last * share
+            if level > cap { level = cap - (level - cap) }
+            let close = base * (1 + level / 100)
             let open = previous ?? close
+            previous = close
+            let high = min(max(open, close) * (1 + 0.01 * abs(random.normal()) / 100), base * (1 + cap / 100))
+            let low = min(open, close) * (1 - 0.01 * abs(random.normal()) / 100)
             // More shares change hands near the open and the close than at midday.
-            let shape = 1 + 1.5 * pow(2 * elapsed / span - 1, 2)
+            let shape = 1 + 1.5 * pow(2 * Double(minute) / 390 - 1, 2)
+            bars.append(PriceBar(
+                timestamp: sessionOpen + Double(minute) * 60, close: close, high: max(high, open, close),
+                open: open, low: low, volume: Int(Double(volumeBase(symbol)) / 390 * shape * (0.6 + 0.8 * random.unit()))))
+        }
+        return bars
+    }
+
+    /// A minute's bars as 5-minute ones, five minutes each from the first: the first's open, the
+    /// last's close, the highest high, the lowest low and the volumes added up.
+    static func fiveMinuteBars(_ minutes: [PriceBar]) -> [PriceBar] {
+        stride(from: 0, to: minutes.count, by: 5).map { index in
+            let group = minutes[index..<min(index + 5, minutes.count)]
             return PriceBar(
-                timestamp: status.session.open + elapsed, close: close, high: max(close, open), open: open,
-                low: min(close, open), volume: Int(Double(volumeBase(symbol)) / 78 * shape))
+                timestamp: group.first!.timestamp, close: group.last!.close, high: group.compactMap(\.high).max(),
+                open: group.first!.open, low: group.compactMap(\.low).min(), volume: group.compactMap(\.volume).reduce(0, +))
         }
     }
 
@@ -119,7 +153,7 @@ public actor DemoProvider: MarketDataProvider {
         // A trend each symbol keeps: from 10% down to 30% up a year.
         let yearly = -0.10 + 0.40 * Double(seed(symbol) % 97) / 96
         let (barsPerYear, volatility): (Double, Double) = switch timeframe.barLength {
-        case .minutes(let minutes): (252 * 390 / Double(minutes), minutes <= 15 ? 0.0015 : 0.004)
+        case .minutes(let minutes): (252 * 390 / Double(minutes), 0.0004 * Double(minutes).squareRoot())
         case .day: (252, 0.011)
         case .week: (52, 0.024)
         }

@@ -150,14 +150,20 @@ polled or streamed; the row still shows the data's age or that it's stale or clo
 **A symbol's chart.** Clicking a symbol in the popover or the dashboard (its ticker, its day's
 chart, a double-click on its row, or **Open Chart** in its context menu) opens its chart window,
 one per symbol (`SymbolChartView`, `App/Vettira/`), which `MenuBarController` makes the first time
-and keeps when it's closed. It draws `SymbolChart` with Swift Charts: a smooth line over a fill
+and keeps when it's closed. It draws `SymbolChart` with Swift Charts: straight lines from one real bar's close to the next,
+never smoothed, over a fill
 that fades downward, green when the period is up and red when it's down, light gridlines with
 prices on the right and times along the bottom, and on 1D the previous close as a dotted line.
-Hovering shows a crosshair and a tooltip with the `readout`. The timeframe pills ask
-`AppState.history(for:timeframe:)`, which asks `ChartHistoryStore` (`Providers/`): 1D is the polled
-quote's own bars, so it needs no request and moves with each poll; any other timeframe is the
-cached history while it's fresh, or one request through the monitor's own provider, so it waits
-behind any poll's request and keeps to its pace ([providers.md](providers.md#history-for-the-chart)).
+Hovering shows a crosshair that snaps to the nearest bar and a tooltip with its `readout`. The
+timeframe pills ask `AppState.history(for:timeframe:)`, which asks `ChartHistoryStore`
+(`Providers/`): the cached history while it's fresh, or one request through the monitor's own
+provider, so it waits behind any poll's request and keeps to its pace
+([providers.md](providers.md#history-for-the-chart)). 1D is a minute's bars, asked for again once a
+minute while the window is open in regular hours (`ChartTimeframe.refreshes(at:)`), so a window
+opened before the open starts asking at the open; until they come, or while they're an earlier
+session's, it shows the polled quote's own 5-minute bars (`ChartHistoryStore.oneDay(fetched:polled:)`).
+Chart windows are kept when closed, so `MenuBarController` tells `AppState` which are open
+(`openWindows`), and a closed one's view asks for nothing.
 Each line ends at the latest price, polled or streamed. The header always shows the quote's time
 and age, or why it can't alert, so the chart never looks live when it isn't. The `SymbolStats`
 grid needs no request. The dashboard's rows draw each symbol's day as a small line

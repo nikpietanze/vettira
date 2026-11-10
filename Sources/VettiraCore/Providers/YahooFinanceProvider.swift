@@ -60,12 +60,17 @@ public actor YahooFinanceProvider: MarketDataProvider {
         }
     }
 
+    /// The polls' `range` and `interval`: the day at 5 minutes, for the quote, the popover's and
+    /// the dashboard's small charts, and the day's figures. The chart's 1D asks for a minute's
+    /// bars on its own, only while it's open.
+    static let pollParameters = (range: "1d", interval: "5m")
+
     /// The chart endpoint's `range` and `interval` for a timeframe.
     static func parameters(for timeframe: ChartTimeframe) -> (range: String, interval: String) {
         switch timeframe {
-        case .oneDay: ("1d", "5m")
-        case .fiveDays: ("5d", "15m")
-        case .oneMonth: ("1mo", "60m")
+        case .oneDay: ("1d", "1m")
+        case .fiveDays: ("5d", "5m")
+        case .oneMonth: ("1mo", "30m")
         case .sixMonths: ("6mo", "1d")
         case .yearToDate: ("ytd", "1d")
         case .oneYear: ("1y", "1d")
@@ -83,7 +88,7 @@ public actor YahooFinanceProvider: MarketDataProvider {
 
     /// The symbol's quote, from the day's chart: the same request brings the day's bars.
     private func quote(for symbol: String) async throws(ProviderError) -> Outcome {
-        let (range, interval) = Self.parameters(for: .oneDay)
+        let (range, interval) = Self.pollParameters
         let fetched = try await chart(for: symbol, range: range, interval: interval)
         guard case .result(let result, let meta) = fetched else {
             if case .unknown = fetched { return .unknown }

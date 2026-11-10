@@ -4,8 +4,8 @@ import VettiraCore
 
 /// SPY's recorded history for `timeframe`, read by the Yahoo provider from its fixture.
 func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
-    let range = ["1D": "1d", "5D": "5d", "1M": "1mo", "6M": "6mo", "YTD": "ytd", "1Y": "1y", "5Y": "5y"][timeframe.rawValue]!
-    let http = FakeHTTPClient([Yahoo.chart("SPY", try HistoryFixtures.spy(range))])
+    let fixture = ["1D": "1d-1m", "5D": "5d-5m", "1M": "1mo-30m", "6M": "6mo", "YTD": "ytd", "1Y": "1y", "5Y": "5y"][timeframe.rawValue]!
+    let http = FakeHTTPClient([Yahoo.chart("SPY", try HistoryFixtures.spy(fixture))])
     return try await YahooFinanceProvider(http: http, pacing: PacingClock().pacing).history(for: "SPY", timeframe: timeframe)
 }
 
@@ -18,12 +18,13 @@ func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
 
     @Test func oneDaySpreadsTheBarsOverTheSession() async throws {
         let chart = try #require(SymbolChart(history: try await recordedHistory(.oneDay), latest: nil, now: nextMorning))
-        #expect(chart.points.count == 79)
+        // Every minute's bar from 09:30 to 16:00.
+        #expect(chart.points.count == 391)
         #expect(chart.points.first?.x == 0)
         #expect(chart.points.last?.x == 1)
-        // A 5-minute bar is 1/78 of the session; half of one at each end.
-        #expect(abs(chart.xDomain.lowerBound + 1.0 / 156) < 1e-9)
-        #expect(abs(chart.xDomain.upperBound - (1 + 1.0 / 156)) < 1e-9)
+        // A minute's bar is 1/390 of the session; half of one at each end.
+        #expect(abs(chart.xDomain.lowerBound + 1.0 / 780) < 1e-9)
+        #expect(abs(chart.xDomain.upperBound - (1 + 1.0 / 780)) < 1e-9)
         #expect(chart.points.map(\.segment).allSatisfy { $0 == 0 })
     }
 
@@ -53,12 +54,14 @@ func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
 
     @Test func theCrosshairSaysTheTimePriceChangeAndVolume() async throws {
         let chart = try #require(SymbolChart(history: try await recordedHistory(.oneDay), latest: nil, now: nextMorning))
-        // 13:24 is nearest the 13:25 bar.
-        let minutes: Double = 13 * 60 + 24 - (9 * 60 + 30)
+        // 13:24:20 is nearest the 13:24 bar: the crosshair snaps to it, at its own place and close.
+        let minutes: Double = 13 * 60 + 24 + 1.0 / 3 - (9 * 60 + 30)
         let point = try #require(chart.nearest(toX: minutes / 390))
-        #expect(point.bar.timestamp == open + 235 * 60)
+        #expect(point.bar.timestamp == open + 234 * 60)
+        #expect(abs(point.x - 234.0 / 390) < 1e-12)
+        #expect(point.price == point.bar.close)
         let readout = chart.readout(point)
-        #expect(readout.time == "13:25 ET")
+        #expect(readout.time == "13:24 ET")
         #expect(readout.price == DisplayFormat.price(point.price))
         #expect(readout.change == DisplayFormat.signedPercent((point.price - 735.29) / 735.29 * 100))
         #expect(readout.direction == .up)

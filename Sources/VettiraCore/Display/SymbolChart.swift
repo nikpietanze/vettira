@@ -88,7 +88,7 @@ public struct SymbolChart: Equatable, Sendable {
             let close = session?.close ?? max(bars[bars.count - 1].timestamp, open + 300)
             let length = close.timeIntervalSince(open)
             x = { _, bar in bar.timestamp.timeIntervalSince(open) / length }
-            halfBar = 150 / length
+            halfBar = Self.end(of: open, timeframe).timeIntervalSince(open) / 2 / length
             xDomain = -halfBar...(1 + halfBar)
         } else {
             x = { index, _ in Double(index) }

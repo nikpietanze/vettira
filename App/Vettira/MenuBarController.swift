@@ -147,6 +147,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         let window = windows[id] ?? makeWindow(id, title: title, firstSize: firstSize, content: content())
         windows[id] = window
         if dock.opened(id) { applyDockPresence() }
+        state.windowsChanged(dock.openWindows)
         window.makeKeyAndOrderFront(nil)
         // A menu-bar app isn't active, so its window would open behind the frontmost app.
         NSApp.activate()
@@ -178,6 +179,7 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let id = (notification.object as? NSWindow)?.identifier?.rawValue else { return }
         if dock.closed(id) { applyDockPresence() }
+        state.windowsChanged(dock.openWindows)
     }
 
     private func applyDockPresence() {

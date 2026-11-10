@@ -15,17 +15,20 @@ import VettiraCore
         return Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
     }
 
-    /// Each timeframe, the range and interval it asks for (the spec's: 1D at 5 minutes, 5D at 15,
-    /// 1M at an hour, 6M, YTD and 1Y at a day, 5Y at a week), the bars in SPY's recorded response,
-    /// and the close before them.
+    /// Each timeframe, the range and interval it asks for (the spec's: 1D at a minute, 5D at 5
+    /// minutes, 1M at 30, 6M, YTD and 1Y at a day, 5Y at a week), the bars in SPY's recorded
+    /// response, and the close before them.
     struct Case: Sendable {
         let timeframe: ChartTimeframe, range: String, interval: String, bars: Int, previousClose: Double
+        var fixture: String { ["1d", "5d", "1mo"].contains(range) ? "\(range)-\(interval)" : range }
     }
 
     static let timeframes = [
-        Case(timeframe: .oneDay, range: "1d", interval: "5m", bars: 79, previousClose: 735.29),
-        Case(timeframe: .fiveDays, range: "5d", interval: "15m", bars: 131, previousClose: 752.1),
-        Case(timeframe: .oneMonth, range: "1mo", interval: "60m", bars: 148, previousClose: 778.57),
+        // A session is 390 minutes, so a minute's bars from 09:30 to 16:00 are 391, as are five
+        // sessions of 5-minute bars (5 × 78 + the last close); a month of 30-minute bars, 274.
+        Case(timeframe: .oneDay, range: "1d", interval: "1m", bars: 391, previousClose: 735.29),
+        Case(timeframe: .fiveDays, range: "5d", interval: "5m", bars: 391, previousClose: 752.1),
+        Case(timeframe: .oneMonth, range: "1mo", interval: "30m", bars: 274, previousClose: 778.57),
         Case(timeframe: .sixMonths, range: "6mo", interval: "1d", bars: 127, previousClose: 737.62),
         Case(timeframe: .yearToDate, range: "ytd", interval: "1d", bars: 215, previousClose: 681.92),
         Case(timeframe: .oneYear, range: "1y", interval: "1d", bars: 251, previousClose: 670.97),
@@ -35,7 +38,7 @@ import VettiraCore
     @Test(arguments: timeframes)
     func eachTimeframeIsOneRequestForItsRangeAndInterval(_ test: Case) async throws {
         let (timeframe, range, interval, bars, previousClose) = (test.timeframe, test.range, test.interval, test.bars, test.previousClose)
-        let (yahoo, http) = provider([Yahoo.chart("SPY", try HistoryFixtures.spy(range))])
+        let (yahoo, http) = provider([Yahoo.chart("SPY", try HistoryFixtures.spy(test.fixture))])
         let history = try await yahoo.history(for: "SPY", timeframe: timeframe)
 
         let requests = await http.requests
@@ -58,7 +61,7 @@ import VettiraCore
     }
 
     @Test func theIntradayRangesRunFromTheOpenToTheClose() async throws {
-        let (yahoo, _) = provider([Yahoo.chart("SPY", try HistoryFixtures.spy("1d"))])
+        let (yahoo, _) = provider([Yahoo.chart("SPY", try HistoryFixtures.spy("1d-1m"))])
         let history = try await yahoo.history(for: "SPY", timeframe: .oneDay)
         #expect(history.bars.first?.timestamp == HistoryFixtures.open)
         #expect(history.bars.last?.timestamp == HistoryFixtures.close)
@@ -97,7 +100,7 @@ import VettiraCore
         // bodies read as a quote and as a history.
         let (yahoo, http) = provider([
             Yahoo.chart("SPY", try HistoryFixtures.spy("1d")), Yahoo.chart("SPY", try HistoryFixtures.spy("1y")),
-            Yahoo.chart("SPY", try HistoryFixtures.spy("5d")),
+            Yahoo.chart("SPY", try HistoryFixtures.spy("5d-5m")),
         ], clock: clock)
         async let poll = yahoo.quotes(for: ["SPY"])
         async let history = yahoo.history(for: "SPY", timeframe: .oneYear)
@@ -108,6 +111,15 @@ import VettiraCore
         #expect(await http.mostInFlight == 1)
         #expect(await http.requests.count == 3)
         #expect(clock.sleeps == [.seconds(1), .seconds(1)])
+    }
+
+    @Test func thePollsStayAtFiveMinutesWhileTheChartsDayIsAtAMinute() async throws {
+        let (yahoo, http) = provider([
+            Yahoo.chart("SPY", try HistoryFixtures.spy("1d")), Yahoo.chart("SPY", try HistoryFixtures.spy("1d-1m")),
+        ])
+        _ = try await yahoo.quotes(for: ["SPY"])
+        _ = try await yahoo.history(for: "SPY", timeframe: .oneDay)
+        #expect(await http.requests.map { query(of: $0)["interval"] } == ["5m", "1m"])
     }
 
     @Test func thePollsQuoteHasTheDaysOpenLowVolumeAndName() async throws {

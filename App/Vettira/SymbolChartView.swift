@@ -14,7 +14,7 @@ struct SymbolChartView: View {
     let state: AppState
     let symbol: TickerSymbol
     @State private var timeframe: ChartTimeframe
-    /// The last history fetched for a timeframe other than the polls' 1D.
+    /// The last history fetched, for any timeframe.
     @State private var fetched: PriceHistory?
     @State private var loading = false
     @State private var problem: String?
@@ -34,8 +34,11 @@ struct SymbolChartView: View {
 
     var body: some View {
         let quote = state.state(of: symbol)?.quote
-        let polled = timeframe == .oneDay ? ChartHistoryStore.polledDay(quote) : nil
-        let history = polled ?? (fetched?.timeframe == timeframe ? fetched : nil)
+        // 1D shows the polls' 5-minute bars until its minute bars come, or while those are an
+        // earlier session's.
+        let history = timeframe == .oneDay
+            ? ChartHistoryStore.oneDay(fetched: fetched, polled: ChartHistoryStore.polledDay(quote))
+            : fetched?.timeframe == timeframe ? fetched : nil
         let chart = history.flatMap { SymbolChart(history: $0, latest: quote, now: state.now) }
         let tint = Color.direction(chart?.direction)
         VStack(alignment: .leading, spacing: 10) {
@@ -62,8 +65,28 @@ struct SymbolChartView: View {
         .padding(16)
         .frame(minWidth: 600, minHeight: 520)
         .onChange(of: timeframe) { hoverX = nil }
-        .task(id: timeframe) { await load() }
+        .task(id: Loading(timeframe: timeframe, open: isOpen)) {
+            // Windows are kept when closed, so a closed one's view stays: it asks for nothing.
+            guard isOpen else { return }
+            await load()
+            // 1D wakes each minute while its window is open, and in regular hours asks again, so
+            // each new minute's bar joins the line; the latest quote's price ends it in between.
+            // Opened before the open, it starts asking at the open.
+            while timeframe == .oneDay, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(ChartTimeframe.refreshInterval))
+                if Task.isCancelled { break }
+                if timeframe.refreshes(at: state.now) { await load() }
+            }
+        }
     }
+
+    /// What the loading task follows: the timeframe, and whether the window is open.
+    private struct Loading: Equatable {
+        let timeframe: ChartTimeframe
+        let open: Bool
+    }
+
+    private var isOpen: Bool { state.openWindows.contains(Self.windowID(symbol)) }
 
     private func header(quote: Quote?, history: PriceHistory?, chart: SymbolChart?, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -103,12 +126,11 @@ struct SymbolChartView: View {
         return [row.status, quote, row.dataAge.map { "\($0) old" }].compactMap { $0 }.joined(separator: " \u{00B7} ")
     }
 
-    /// The timeframe's history: from the cache when it's there, otherwise one request. 1D needs
-    /// none while the polls bring its bars.
+    /// The timeframe's history: from the cache when it's there, otherwise one request, through
+    /// the provider's pacing, in turn with the polls.
     private func load() async {
         problem = nil
         loading = false
-        if timeframe == .oneDay, ChartHistoryStore.polledDay(state.state(of: symbol)?.quote) != nil { return }
         if let cached = await state.cachedHistory(for: symbol, timeframe: timeframe) {
             fetched = cached
             return
@@ -126,9 +148,10 @@ struct SymbolChartView: View {
     }
 }
 
-/// The price as a smooth line over a fill that fades down, green when the period is up and red
+/// The price as straight lines from one real bar's close to the next, never smoothed, so it never
+/// shows a price that didn't trade, over a fill that fades down, green when the period is up and red
 /// when it's down; on 1D the previous close as a dotted line. Hovering shows a crosshair and a
-/// tooltip with the time, price, change and volume.
+/// tooltip with the time, price, change and volume of the nearest real bar.
 private struct AreaChart: View {
     let chart: SymbolChart
     @Binding var hoverX: Double?
@@ -144,11 +167,11 @@ private struct AreaChart: View {
                 AreaMark(
                     x: .value("Time", point.x), yStart: .value("Base", chart.priceDomain.lowerBound),
                     yEnd: .value("Price", point.price), series: .value("Run", point.segment))
-                    .interpolationMethod(.monotone)
+                    .interpolationMethod(.linear)
                     .foregroundStyle(.linearGradient(
                         colors: [color.opacity(0.30), color.opacity(0.02)], startPoint: .top, endPoint: .bottom))
                 LineMark(x: .value("Time", point.x), y: .value("Price", point.price), series: .value("Run", point.segment))
-                    .interpolationMethod(.monotone)
+                    .interpolationMethod(.linear)
                     .foregroundStyle(color)
                     .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
             }

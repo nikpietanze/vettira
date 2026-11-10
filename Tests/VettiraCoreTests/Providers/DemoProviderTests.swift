@@ -189,16 +189,43 @@ private final class RecordingCenter: AlertNotificationCenter, @unchecked Sendabl
 
 // MARK: History
 
-@Test func demoHistoryForOneDayIsTheQuotesOwnDay() async throws {
+@Test func demoHistoryForOneDayIsTheQuotesOwnDayAtAMinute() async throws {
     let now = nyTime("11:02:00")
     let provider = DemoProvider(now: { now })
     let quote = try await provider.testConnection(symbol: "SPY")
     let day = try await provider.history(for: "SPY", timeframe: .oneDay)
-    #expect(day.bars == quote.intraday)
+    #expect(day.timeframe == .oneDay)
     #expect(day.previousClose == quote.previousClose)
+    // A bar each minute from 09:30 up to now: 92, to 11:01.
+    #expect(day.bars.map(\.timestamp) == stride(from: 0, through: 91 * 60, by: 60).map { nyTime("09:30:00") + $0 })
     // Each bar opens where the one before closed, with a made-up volume.
     #expect(zip(day.bars, day.bars.dropFirst()).allSatisfy { $1.open == $0.close })
-    #expect(day.bars.allSatisfy { ($0.volume ?? 0) > 0 && $0.low! <= min($0.open!, $0.close!) })
+    #expect(day.bars.allSatisfy {
+        ($0.volume ?? 0) > 0 && $0.low! <= min($0.open!, $0.close!) && $0.high! >= max($0.open!, $0.close!)
+    })
+    // The polls' 5-minute bars are the same day, five of its minutes each.
+    #expect(quote.intraday.count == 19)
+    for (index, bar) in quote.intraday.enumerated() {
+        try #require(index * 5 < day.bars.count)
+        let minutes = day.bars[(index * 5)..<min(index * 5 + 5, day.bars.count)]
+        #expect(bar.timestamp == minutes.first?.timestamp)
+        #expect(bar.open == minutes.first?.open)
+        #expect(bar.close == minutes.last?.close)
+        #expect(bar.high == minutes.compactMap(\.high).max())
+        #expect(bar.low == minutes.compactMap(\.low).min())
+        #expect(bar.volume == minutes.compactMap(\.volume).reduce(0, +))
+    }
+}
+
+@Test func aDemoDayIsAJaggedWalkNotACurve() async throws {
+    let now = nyTime("15:00:00")
+    let day = try await DemoProvider(now: { now }).history(for: "SPY", timeframe: .oneDay)
+    let again = try await DemoProvider(now: { now }).history(for: "SPY", timeframe: .oneDay)
+    #expect(day == again)
+    // A random walk turns about every other minute; a smooth curve turns a handful of times a day.
+    let moves = zip(day.bars, day.bars.dropFirst()).map { $1.close! - $0.close! }
+    let turns = zip(moves, moves.dropFirst()).filter { $0 * $1 < 0 }.count
+    #expect(Double(turns) > Double(moves.count) * 0.3)
 }
 
 @Test(arguments: [ChartTimeframe.fiveDays, .oneMonth, .sixMonths, .yearToDate, .oneYear, .fiveYears])
@@ -225,9 +252,9 @@ func demoHistoryEndsAtTheQuotesPriceAndIsTheSameEachRun(timeframe: ChartTimefram
     let now = nyTime("11:02:00")
     let provider = DemoProvider(now: { now })
     let calendar = MarketCalendar.usEquities
-    // 5 sessions of 15-minute bars: four whole days of 26 and today's to 11:00, 7.
+    // 5 sessions of 5-minute bars: four whole days of 78 and today's to 11:00, 19.
     let fiveDays = try await provider.history(for: "SPY", timeframe: .fiveDays)
-    #expect(fiveDays.bars.count == 4 * 26 + 7)
+    #expect(fiveDays.bars.count == 4 * 78 + 19)
     #expect(fiveDays.bars.allSatisfy { calendar.status(at: $0.timestamp)?.state == .regular })
     #expect(fiveDays.bars.first?.timestamp == nyTime("09:30:00", on: "2026-11-04"))
     // A year of trading days, each at its open: none on a weekend or a holiday the calendar has.

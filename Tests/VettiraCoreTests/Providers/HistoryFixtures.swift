@@ -4,12 +4,16 @@ import Testing
 /// SPY's history for each timeframe (real): one `v8/finance/chart/SPY` response per timeframe,
 /// with its range and interval and `includePrePost=false`, fetched once by hand on the evening of
 /// Monday 9 November 2026, after the close, at least a second apart and with Vettira's
-/// User-Agent, cut down to the fields Vettira reads (`Fixtures/History/spy-<range>.json`). No
-/// cookie, token or personal data. Every response ends with Monday's close, 752.69.
+/// User-Agent, cut down to the fields Vettira reads. No cookie, token or personal data. Every
+/// response ends with Monday's close, 752.69.
+///
+/// `spy-1d.json` is the polls' request, the day at 5 minutes. The chart's are `spy-1d-1m.json`
+/// (1D at a minute), `spy-5d-5m.json` (5D at 5 minutes), `spy-1mo-30m.json` (1M at 30 minutes),
+/// and `spy-6mo.json`, `spy-ytd.json`, `spy-1y.json` (a day) and `spy-5y.json` (a week).
 enum HistoryFixtures {
-    /// The response for `range` (`1d`, `5d`, `1mo`, `6mo`, `ytd`, `1y` or `5y`).
-    static func spy(_ range: String) throws -> String {
-        let url = try #require(Bundle.module.url(forResource: "spy-\(range)", withExtension: "json", subdirectory: "Fixtures/History"))
+    /// The response in `spy-<name>.json`: `1d` for the polls', or a chart's, like `1d-1m` or `1y`.
+    static func spy(_ name: String) throws -> String {
+        let url = try #require(Bundle.module.url(forResource: "spy-\(name)", withExtension: "json", subdirectory: "Fixtures/History"))
         return try String(contentsOf: url, encoding: .utf8)
     }
 

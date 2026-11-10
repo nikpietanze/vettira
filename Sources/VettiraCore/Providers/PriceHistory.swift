@@ -1,7 +1,7 @@
 import Foundation
 
-/// A span of a symbol's price history the chart shows, and the bars it's drawn from: 1D at
-/// 5 minutes, 5D at 15 minutes, 1M at an hour, 6M, YTD and 1Y at a day, and 5Y at a week. Each
+/// A span of a symbol's price history the chart shows, and the bars it's drawn from: 1D at a
+/// minute, 5D at 5 minutes, 1M at 30 minutes, 6M, YTD and 1Y at a day, and 5Y at a week. Each
 /// provider turns it into its own request.
 public enum ChartTimeframe: String, CaseIterable, Sendable, Hashable, Identifiable {
     case oneDay = "1D"
@@ -23,9 +23,9 @@ public enum ChartTimeframe: String, CaseIterable, Sendable, Hashable, Identifiab
 
     public var barLength: BarLength {
         switch self {
-        case .oneDay: .minutes(5)
-        case .fiveDays: .minutes(15)
-        case .oneMonth: .minutes(60)
+        case .oneDay: .minutes(1)
+        case .fiveDays: .minutes(5)
+        case .oneMonth: .minutes(30)
         case .sixMonths, .yearToDate, .oneYear: .day
         case .fiveYears: .week
         }
@@ -38,16 +38,26 @@ public enum ChartTimeframe: String, CaseIterable, Sendable, Hashable, Identifiab
     }
 
     /// How long a fetched history stays fresh enough to show again without asking: about a bar,
-    /// so a new request brings at most a bar or two more. 1D usually needs no request at all: the
-    /// polls bring its bars (`ChartHistoryStore`).
+    /// so a new request brings at most a bar or two more. 1D's is just under a minute, so its
+    /// once-a-minute refresh (`refreshes(at:calendar:)`) asks again each time.
     public var cacheLifetime: TimeInterval {
         switch self {
-        case .oneDay: 5 * 60
-        case .fiveDays: 15 * 60
-        case .oneMonth: 60 * 60
+        case .oneDay: 55
+        case .fiveDays: 5 * 60
+        case .oneMonth: 30 * 60
         case .sixMonths, .yearToDate, .oneYear: 4 * 3600
         case .fiveYears: 12 * 3600
         }
+    }
+
+    /// How often an open 1D chart wakes to ask for its history again, when `refreshes(at:)`.
+    public static let refreshInterval: TimeInterval = 60
+
+    /// Whether an open chart of this timeframe asks for its history again at `now`: 1D in regular
+    /// hours, so each new minute's bar joins the line. Between refreshes the chart ends at the
+    /// latest quote's price.
+    public func refreshes(at now: Date, calendar: MarketCalendar = .usEquities) -> Bool {
+        self == .oneDay && calendar.status(at: now)?.state == .regular
     }
 
     /// The period in words, for the chart's heading: `Past 5 days`.
