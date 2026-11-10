@@ -96,6 +96,44 @@ import VettiraCore
     #expect(fired == [.early, .strong])
 }
 
+@Test func theDemosBarsNeverRaiseItsHigh() async throws {
+    // The demo's quotes, with their made-up day's bars, polled every 15 s from 10:00: for a
+    // symbol up on the day (SPY) and one down (QQQ), the high is the path's 0.30% above the base,
+    // and the warnings come on the sixth and seventh poll, as docs/providers.md says.
+    let clock = DemoClock(nyTime("10:00:00"))
+    let provider = DemoProvider(now: { clock.now })
+    var engine = ReversalAlertEngine()
+    var fired: [String: [Int: PullbackSignal]] = [:]
+    var highs: [String: SessionHigh] = [:]
+    for poll in 1...(DemoProvider.path.count + 2) {
+        for quote in try await provider.quotes(for: ["SPY", "QQQ"]).quotes {
+            #expect(!quote.intraday.isEmpty)
+            guard case .accepted(let high, _, let alert) = engine.evaluate(
+                quote, thresholds: .standard, now: clock.now + 1) else {
+                Issue.record("The demo's \(quote.symbol) quote was rejected")
+                continue
+            }
+            highs[quote.symbol] = high
+            if let alert { fired[quote.symbol, default: [:]][poll] = alert.signal }
+        }
+        clock.now += 15
+    }
+    for symbol in ["SPY", "QQQ"] {
+        #expect(highs[symbol] == SessionHigh(price: DemoProvider.basePrice(symbol) * (1 + DemoProvider.path[3] / 100), kind: .observed))
+        #expect(fired[symbol] == [6: .early, 7: .strong])
+    }
+}
+
+private final class DemoClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _now: Date
+    init(_ now: Date) { _now = now }
+    var now: Date {
+        get { lock.withLock { _now } }
+        set { lock.withLock { _now = newValue } }
+    }
+}
+
 @Test(arguments: [
     // After-hours, Tuesday: to 10:00 that morning.
     ("19:00:00", "2026-11-10", "10:00:00", "2026-11-10"),

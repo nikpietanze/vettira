@@ -25,10 +25,15 @@ private func at(_ time: String, on day: String = tuesday) -> Date {
 
 private func quote(
     _ price: Double, at time: Date, symbol: String = "SPY", high: Double? = nil,
-    session: Quote.Session = .regular, delay: TimeInterval? = nil
+    session: Quote.Session = .regular, delay: TimeInterval? = nil, bars: [PriceBar] = []
 ) -> Quote {
     Quote(symbol: symbol, price: price, timestamp: time, source: "Test provider",
-          sessionHigh: high, session: session, providerDelay: delay)
+          sessionHigh: high, session: session, providerDelay: delay, intraday: bars)
+}
+
+/// A 5-minute bar starting at `time`, with its last price and its highest.
+private func bar(_ time: String, on day: String = tuesday, close: Double?, high: Double?) -> PriceBar {
+    PriceBar(timestamp: at(time, on: day), close: close, high: high)
 }
 
 private func close(_ a: Double?, _ b: Double) -> Bool {
@@ -49,10 +54,11 @@ private struct Feed {
     @discardableResult
     mutating func send(
         _ price: Double, at time: String, on day: String = tuesday, symbol: String = "SPY",
-        high: Double? = nil, session: Quote.Session = .regular, delay: TimeInterval? = nil
+        high: Double? = nil, session: Quote.Session = .regular, delay: TimeInterval? = nil,
+        bars: [PriceBar] = []
     ) -> QuoteEvaluation {
         let when = at(time, on: day)
-        let quote = quote(price, at: when, symbol: symbol, high: high, session: session, delay: delay)
+        let quote = quote(price, at: when, symbol: symbol, high: high, session: session, delay: delay, bars: bars)
         return engine.evaluate(quote, thresholds: thresholds, now: when.addingTimeInterval(lag))
     }
 }
@@ -194,6 +200,182 @@ extension QuoteEvaluation {
         #expect(alert.high == SessionHigh(price: 100.50, kind: .observed))
         #expect(alert.signal == .early)
         #expect(close(alert.pullbackPercent, (100.50 - 100.10) / 100.50 * 100))
+    }
+
+    // MARK: The day's bars
+
+    @Test func aBarsHighAboveTheQuotesIsTheObservedHigh() throws {
+        var feed = Feed()
+        feed.send(100, at: "10:00:00")
+        // Between the polls the price reached 100.40, in the 10:00 bar; 99.80 is 0.20% below the
+        // quotes' high of 100, but 0.60% below the bar's.
+        let alert = try #require(feed.send(99.80, at: "10:12:10", bars: [
+            bar("10:00:00", close: 100.10, high: 100.40),
+            bar("10:05:00", close: 99.90, high: 100.00),
+            bar("10:10:00", close: 99.80, high: 99.85),
+        ]).alert)
+        #expect(alert.high == SessionHigh(price: 100.40, kind: .observed))
+        #expect(alert.signal == .strong)
+        #expect(close(alert.pullbackPercent, (100.40 - 99.80) / 100.40 * 100))
+        #expect(alert.summary.hasSuffix("SPY is 0.60% below its observed high. Quote 5 s old."))
+    }
+
+    @Test func aBarsHighCountsBeforeTheFirstQuote() throws {
+        // Monitoring starts at 10:12: the morning's bars are part of the observed high from the
+        // first quote, which is past the stronger warning from the start.
+        var feed = Feed()
+        let alert = try #require(feed.send(99.80, at: "10:12:10", bars: [
+            bar("09:30:00", close: 100.20, high: 100.50),
+            bar("09:35:00", close: 100.00, high: 100.25),
+            bar("10:10:00", close: 99.80, high: 99.85),
+        ]).alert)
+        #expect(alert.high == SessionHigh(price: 100.50, kind: .observed))
+        #expect(alert.signal == .strong)
+    }
+
+    @Test func aBarCountsOnlyOnceItEndedByTheQuotesTime() {
+        var feed = Feed()
+        let bars = [
+            bar("10:00:00", close: 99.85, high: 99.90),
+            bar("10:05:00", close: 99.90, high: 100.30),
+            bar("10:10:00", close: 99.80, high: 100.40),
+        ]
+        // At 10:07 the 10:05 bar is still in progress, and the 10:10 bar starts after the quote:
+        // only the 10:00 bar ended by then.
+        let first = feed.send(99.80, at: "10:07:00", bars: bars)
+        #expect(first.high == SessionHigh(price: 99.90, kind: .observed))
+        #expect(first.isAcceptedWithoutAlert)
+        // At 10:12 the 10:05 bar has ended; the 10:10 bar is in progress.
+        let second = feed.send(99.80, at: "10:12:00", bars: bars)
+        #expect(second.high == SessionHigh(price: 100.30, kind: .observed))
+        #expect(second.alert?.signal == .strong)  // 0.50% below 100.30
+    }
+
+    @Test func barsOutsideTheQuotesRegularSessionDoNotCount() {
+        var feed = Feed()
+        let evaluation = feed.send(100, at: "09:40:00", bars: [
+            bar("15:55:00", on: "2026-11-09", close: 104.90, high: 105.00),  // Monday's session
+            bar("16:00:00", on: "2026-11-09", close: 104.80, high: 104.95),  // Monday's close
+            bar("09:00:00", close: 102.90, high: 103.00),                    // Tuesday's pre-market
+            bar("09:25:00", close: 101.90, high: 102.00),
+            bar("09:30:00", close: 100.00, high: 100.10),
+            bar("09:35:00", close: 100.00, high: 100.05),
+        ])
+        #expect(evaluation.high == SessionHigh(price: 100.10, kind: .observed))
+        #expect(evaluation.isAcceptedWithoutAlert)
+    }
+
+    @Test func aRejectedQuoteBringsNoBarsIn() {
+        let bars = [bar("10:00:00", close: 100.10, high: 100.40), bar("10:05:00", close: 99.80, high: 99.85)]
+        let rejected: [(inout Feed) -> QuoteEvaluation] = [
+            { feed in feed.lag = 61; return feed.send(99.80, at: "10:08:00", bars: bars) },
+            { feed in feed.send(99.80, at: "10:08:00", delay: 900, bars: bars) },
+            { feed in feed.send(99.80, at: "10:08:00", session: .postMarket, bars: bars) },
+            { feed in feed.send(99.80, at: "09:59:00", bars: bars) },  // out of order
+            { feed in feed.send(99.80, at: "10:00:00", bars: bars) },  // a duplicate
+            { feed in feed.send(80, at: "10:08:00", bars: bars) },     // an unconfirmed jump
+        ]
+        for send in rejected {
+            var feed = Feed()
+            feed.send(100, at: "10:00:00")
+            let evaluation = send(&feed)
+            #expect(evaluation.rejection != nil)
+            // The next fresh quote, without bars, is measured from the quotes' high alone.
+            feed.lag = 5
+            let next = feed.send(99.80, at: "10:09:00")
+            #expect(next.high == SessionHigh(price: 100, kind: .observed))
+            #expect(next.isAcceptedWithoutAlert)
+        }
+    }
+
+    @Test func aBarsHighThePriceAfterItDoesNotConfirmIsIgnored() throws {
+        var feed = Feed()
+        // 112 is 10.7% from the next close, 100: past the spike limit, a bad tick. The 10:05
+        // bar's 100.10, confirmed by the 10:10 close, counts.
+        let alert = try #require(feed.send(99.80, at: "10:12:00", bars: [
+            bar("10:00:00", close: 100.00, high: 112.00),
+            bar("10:05:00", close: 100.00, high: 100.10),
+            bar("10:10:00", close: 99.80, high: 99.85),
+        ]).alert)
+        #expect(alert.high == SessionHigh(price: 100.10, kind: .observed))
+        #expect(alert.signal == .early)
+        #expect(close(alert.pullbackPercent, (100.10 - 99.80) / 100.10 * 100))
+    }
+
+    @Test func withNoLaterCloseTheQuotesPriceConfirmsABarsHigh() {
+        // The 10:05 bar had no trades, so the price after the 10:00 bar's high is the quote's.
+        let bars = [bar("10:00:00", close: 100.40, high: 100.50), bar("10:05:00", close: nil, high: nil)]
+        var confirmed = Feed()
+        let alert = confirmed.send(99.90, at: "10:07:00", bars: bars).alert
+        #expect(alert?.high == SessionHigh(price: 100.50, kind: .observed))
+        #expect(alert?.signal == .strong)  // 0.597% below
+        // 90 is 10.4% from 100.50: past the spike limit, so the bar's high is ignored.
+        var unconfirmed = Feed()
+        let evaluation = unconfirmed.send(90, at: "10:07:00", bars: bars)
+        #expect(evaluation.high == SessionHigh(price: 90, kind: .observed))
+        #expect(evaluation.isAcceptedWithoutAlert)
+    }
+
+    @Test func aSpikeLimitSetHigherLetsALargerBarHighCount() throws {
+        var feed = Feed(ReversalAlertEngine(settings: try AlertSettings(spikePercent: 20)))
+        let evaluation = feed.send(99.80, at: "10:12:00", bars: [
+            bar("10:00:00", close: 100.00, high: 112.00),
+            bar("10:05:00", close: 100.00, high: 100.10),
+        ])
+        #expect(evaluation.high == SessionHigh(price: 112.00, kind: .observed))
+    }
+
+    @Test func aBarsHighMovesTheHighButNeverRearms() throws {
+        var feed = Feed()
+        feed.send(100, at: "10:00:00")
+        #expect(feed.send(99.50, at: "10:01:00").alert?.signal == .strong)
+        // The 10:05 bar's 100.50 is 0.50% above the alerted high, 100: the high moves to it, but
+        // the cycle doesn't start over, so 100.05, 0.45% below it, sends nothing, though both
+        // cooldowns from 10:01 are over.
+        let moved = feed.send(100.05, at: "10:12:10", bars: [
+            bar("10:05:00", close: 100.40, high: 100.50),
+            bar("10:10:00", close: 100.05, high: 100.30),
+        ])
+        #expect(moved.high == SessionHigh(price: 100.50, kind: .observed))
+        #expect(moved.isAcceptedWithoutAlert)
+        // A quote 0.10% or more above the alerted high rearms: 100.70, then 0.40% below it.
+        #expect(feed.send(100.70, at: "10:20:00").isAcceptedWithoutAlert)
+        let early = try #require(feed.send(100.30, at: "10:21:00").alert)
+        #expect(early.signal == .early)
+        #expect(early.high == SessionHigh(price: 100.70, kind: .observed))
+    }
+
+    @Test func withTheProvidersSessionHighTheBarsAddNothing() {
+        var feed = Feed()
+        // A bar's high a hair above the provider's, as single-precision bars carry it, and one
+        // well above it: the high is still the provider's session high.
+        let evaluation = feed.send(752.00, at: "10:12:00", high: 752.96, bars: [
+            bar("10:00:00", close: 752.50, high: 752.9600219726562),
+            bar("10:05:00", close: 752.10, high: 755.00),
+            bar("10:10:00", close: 752.00, high: 752.20),
+        ])
+        #expect(evaluation.high == SessionHigh(price: 752.96, kind: .session))
+        #expect(close(evaluation.pullbackPercent, (752.96 - 752.00) / 752.96 * 100))
+        // Later quotes without the provider's high keep it, and their bars still add nothing.
+        let later = feed.send(752.00, at: "10:16:00", bars: [
+            bar("10:10:00", close: 752.00, high: 760.00), bar("10:15:00", close: 752.00, high: 752.10),
+        ])
+        #expect(later.high == SessionHigh(price: 752.96, kind: .session))
+    }
+
+    @Test func aRestoredStateCarriesTheBarsHigh() throws {
+        var feed = Feed()
+        feed.send(99.80, at: "10:12:00", bars: [
+            bar("10:00:00", close: 99.90, high: 100.00), bar("10:05:00", close: 99.85, high: 99.90),
+        ])
+        try withAlertStateStore { store in
+            try store.save(feed.engine.state)
+            var relaunched = Feed(ReversalAlertEngine(state: try store.load()))
+            // No bars with this quote: the high is still the saved bar's 100, 0.30% above 99.70.
+            let alert = relaunched.send(99.70, at: "10:13:00").alert
+            #expect(alert?.high == SessionHigh(price: 100, kind: .observed))
+            #expect(alert?.signal == .early)
+        }
     }
 
     // MARK: Rearming and the cooldown
@@ -468,6 +650,45 @@ extension QuoteEvaluation {
     }
 
     // MARK: Recorded quotes
+
+    @Test func aRecordedDaysBarsMakeTheObservedHighWhenThereIsNoSessionHigh() async throws {
+        let http = FakeHTTPClient([Yahoo.chart("SPY", YahooFixtures.spyDay)])
+        let recorded = try #require(
+            try await YahooFinanceProvider(http: http, pacing: PacingClock().pacing).quotes(for: ["SPY"]).quotes.first)
+        // Hand-made quotes during SPY's recorded day of Monday 9 November, each with all 79 of the
+        // day's bars, so some start after the quote's time.
+        func quote(_ price: Double, at time: String, sessionHigh: Double?) -> Quote {
+            var quote = recorded
+            quote.price = price
+            quote.timestamp = at(time, on: "2026-11-09")
+            quote.session = .regular
+            quote.sessionHigh = sessionHigh
+            return quote
+        }
+        func evaluate(_ quote: Quote, in engine: inout ReversalAlertEngine) -> QuoteEvaluation {
+            engine.evaluate(quote, thresholds: .standard, now: quote.timestamp + 5)
+        }
+
+        // Without the session high: at 15:17 the day's highest bar, 15:15's, is still in
+        // progress, so the highest that ended is 14:40's.
+        var engine = ReversalAlertEngine()
+        let before = evaluate(quote(754.00, at: "15:17:00", sessionHigh: nil), in: &engine)
+        #expect(before.high == SessionHigh(price: 755.2100219726562, kind: .observed))
+        #expect(before.isAcceptedWithoutAlert)
+        // At 15:21 it has ended: 753.00 is 0.32% below its high.
+        let alert = try #require(evaluate(quote(753.00, at: "15:21:00", sessionHigh: nil), in: &engine).alert)
+        #expect(alert.high == SessionHigh(price: 755.4199829101562, kind: .observed))
+        #expect(alert.signal == .early)
+        #expect(close(alert.pullbackPercent, (755.4199829101562 - 753.00) / 755.4199829101562 * 100))
+        #expect(alert.summary.contains("below its observed high"))
+
+        // With Yahoo's session high, as recorded, the bars add nothing.
+        var withHigh = ReversalAlertEngine()
+        let session = evaluate(quote(753.00, at: "15:21:00", sessionHigh: recorded.sessionHigh), in: &withHigh)
+        #expect(recorded.sessionHigh == 755.42)
+        #expect(session.high == SessionHigh(price: 755.42, kind: .session))
+        #expect(close(session.pullbackPercent, (755.42 - 753.00) / 755.42 * 100))
+    }
 
     @Test func recordedYahooQuotesAreMeasuredFromTheSessionHigh() async throws {
         let http = FakeHTTPClient([Yahoo.chart("SPY", YahooFixtures.spy), Yahoo.chart("AAPL", YahooFixtures.aapl)])

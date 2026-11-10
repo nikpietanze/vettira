@@ -107,8 +107,12 @@ struct SymbolState: Equatable, Sendable, Codable {
         lastTimestamp = quote.timestamp
         lastPrice = price
         tracker.record(price: price, providerHigh: quote.sessionHigh, on: day)
+        if let barHigh = Self.barHigh(of: quote, on: day, settings: settings, calendar: calendar) {
+            tracker.record(barHigh: barHigh, on: day)
+        }
         let high = tracker.high!
-        if let alertedHigh, high.price >= alertedHigh * (1 + settings.rearmPercent / 100) {
+        // Only a quote rearms: a bar's high can be from before the last alert.
+        if let alertedHigh, tracker.quotedHigh! >= alertedHigh * (1 + settings.rearmPercent / 100) {
             self.alertedHigh = nil
             fired = []
         }
@@ -133,6 +137,29 @@ struct SymbolState: Equatable, Sendable, Codable {
             signal: signal, thresholdPercent: thresholds.percent(for: signal), quoteTimestamp: quote.timestamp,
             dataAge: quote.age(at: now), source: quote.source)
         return .accepted(high: high, pullbackPercent: pullback, alert: alert)
+    }
+
+    /// The highest high among the quote's bars that count (docs/alerts.md, "The day's bars"): bars
+    /// that start in `day`'s regular session, ended by the quote's own time (the next bar started
+    /// by then), and whose high the price after it confirms, within the spike limit: the next
+    /// close up to the quote's time, or the quote's price. `nil` when none counts.
+    private static func barHigh(
+        of quote: Quote, on day: TradingDay, settings: AlertSettings, calendar: MarketCalendar
+    ) -> Double? {
+        let bars = quote.intraday
+        var highest: Double?
+        for index in bars.indices.dropLast() {
+            let bar = bars[index]
+            guard let high = bar.high, high.isFinite, high > 0 else { continue }
+            let next = bars[index + 1]
+            guard next.timestamp > bar.timestamp, next.timestamp <= quote.timestamp,
+                  let status = calendar.status(at: bar.timestamp), status.state == .regular,
+                  status.session.day == day else { continue }
+            let later = bars[(index + 1)...].prefix { $0.timestamp <= quote.timestamp }.lazy.compactMap(\.close).first
+            guard move(from: high, to: later ?? quote.price) <= settings.spikePercent else { continue }
+            highest = max(highest ?? high, high)
+        }
+        return highest
     }
 
     /// How far `to` is from `from`, in percent of `from`, either way.

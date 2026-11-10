@@ -37,7 +37,7 @@ Scope: **US regular trading hours (09:30–16:00 America/New_York)**, with a new
 1. For each ticker, track the session's running high and calculate `pullbackPct = (sessionHigh - latestPrice) / sessionHigh * 100`.
 2. Default **early warning: 0.25%** from high; **stronger warning: 0.40%**. Both configurable per ticker. These are **illustrative thresholds, not validated trading signals**.
 3. Fire promptly when the threshold is crossed on **fresh market data**; do **not** require 30–60 minutes of confirmation. Optionally show a separate 1–5-minute momentum indicator based on sufficiently frequent data, clearly labeled as early/unconfirmed.
-4. Distinguish **provider-reported session high** from **high observed since monitoring began**. If an authoritative session high is unavailable, label it “observed high”; do not misrepresent it as the day's actual high.
+4. Distinguish **provider-reported session high** from **observed high**: the highest price in the quotes Vettira received and, when the provider supplies no session high, in the day's bars that came with them, which go back before monitoring began. If an authoritative session high is unavailable, label it “observed high”; do not misrepresent it as the day's actual high.
 5. Send each threshold once per ticker per high-water-mark cycle, with cooldown/hysteresis to prevent spam. Rearm only on a meaningful new high (configurable) or a new session. Persist enough state to avoid duplicate alerts after closing/reopening the dashboard.
 6. Prevent alerts on out-of-order timestamps, stale/delayed quotes, extended-hours trades, and obviously invalid spikes; show a clear disconnected/stale state.
 

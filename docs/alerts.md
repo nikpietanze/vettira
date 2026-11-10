@@ -48,12 +48,52 @@ Each symbol's pullback is measured from a high that starts over with each tradin
 | Kind | What it is | Shown as |
 |---|---|---|
 | Session high | The regular session's high, as the provider supplied it (Yahoo's `regularMarketDayHigh`) | "session high" |
-| Observed high | The highest regular-session price Vettira saw itself since it started watching the session | "observed high" |
+| Observed high | The highest regular-session price Vettira saw itself: the prices of the quotes it used this session and, when the provider supplies no session high, the highs of the day's bars that came with them | "observed high" |
 
 The provider's high is used whenever it has one and no price Vettira saw is above it. When the
 provider supplies none, or a price comes in above it (its high can lag the price), the high is the
 observed one, and it's labelled that way: it can be lower than the day's actual high, so it's
 never called the session high.
+
+### The day's bars
+
+Each quote can bring the day's regular-session bars, five minutes each from Yahoo, and a bar's
+high is the highest price in it. When the provider supplies no session high, the bars' highs count
+in the observed high, so a high the price reached between two polls, or before Vettira started
+watching the session, isn't missed. That's what the observed high means: the highest price in the
+quotes and bars Vettira got, which can go back to the open, not only since it started watching.
+It's still the observed high, never called the session high: it counts only the bars the provider
+returned, and it can be lower than the day's actual high.
+
+A bar counts only when all of these hold:
+
+- **It came with a quote the engine used.** A quote that's rejected ([below](#what-keeps-a-quote-from-alerting))
+  brings no bars in, so a stale, delayed, out-of-order, duplicate, extended-hours or unconfirmed
+  quote's bars change nothing. A bar never alerts by itself: the pullback is always a fresh quote's
+  price, measured from the high.
+- **It's in the quote's regular session.** The bar starts in the regular session, by the
+  calendar, of the quote's own trading day. A pre-market or after-hours bar, the close's own bar,
+  or a bar from another day doesn't count.
+- **It ended by the quote's time.** The next bar started no later than the quote's own time, so
+  every price in the bar came before the price measured against it. The bar still in progress
+  counts from the first quote after it ends.
+- **A later price confirms its high.** The spike limit checks each quote against the last one, but
+  a bar's high, one trade inside the bar, has no quote of its own. So it's checked against the
+  price after it instead: the next close, from the first later bar with a price, or the quote's
+  price when no later bar up to the quote's time has one. If that's more than the spike limit
+  (10%) from the bar's high, the high is taken as a bad tick and ignored, as a quote's jump is
+  until a later quote confirms it.
+- **The provider supplies no session high.** Once the provider has supplied the regular
+  session's high this session (Yahoo almost always does), bars add nothing: its high already
+  covers the whole session, and a bar's high can differ from it only by rounding (Yahoo's bars
+  carry single-precision prices, 752.9600219726562 for 752.96), which mustn't turn the session
+  high into an observed one.
+
+**A bar's high never rearms.** It moves the high, so later pullbacks are measured from it, but only
+a quote, its price or the provider's session high, can start a new cycle
+([below](#thresholds-and-the-alert-cycle)). The bars go back to the open, so a bar's high can be
+from before the last alert, and says nothing about the price rising again since; and a rearm sends
+both warnings again, so it waits for a price the engine checked as a quote.
 
 The pullback is how far the price is below the high, in percent:
 
@@ -81,10 +121,10 @@ Each threshold fires **once per high-water-mark cycle**:
 - **Once.** After the early warning, a deeper pullback sends the stronger one; nothing repeats
   while the price moves around below the same high, recovering or dipping again. A quote past both
   thresholds at once sends one alert, the stronger warning, which covers the early one.
-- **Rearming.** A new cycle starts, and both thresholds can fire again, when the high rises
-  **0.10%** or more above the high at the last alert (`rearmPercent`), or a new trading day's
-  session starts. A smaller new high moves the high, so later pullbacks are measured from it, but
-  doesn't rearm.
+- **Rearming.** A new cycle starts, and both thresholds can fire again, when a quote takes the
+  high **0.10%** or more above the high at the last alert (`rearmPercent`), or a new trading day's
+  session starts. A smaller new high, or a bar's high however far above, moves the high, so later
+  pullbacks are measured from it, but doesn't rearm.
 - **Cooldown.** The same threshold doesn't fire twice for a symbol within **5 minutes**, by quote
   time (`cooldown`), even after a rearm, so a price see-sawing around a new high doesn't send a
   stream of alerts. A threshold held back fires on the first fresh quote after the cooldown that's
@@ -98,8 +138,8 @@ stateDiagram-v2
     Armed --> EarlySent: pullback ≥ early
     Armed --> StrongSent: pullback ≥ strong (one alert)
     EarlySent --> StrongSent: pullback ≥ strong
-    EarlySent --> Armed: high ≥ alerted high + 0.10%
-    StrongSent --> Armed: high ≥ alerted high + 0.10%
+    EarlySent --> Armed: a quote's high ≥ alerted high + 0.10%
+    StrongSent --> Armed: a quote's high ≥ alerted high + 0.10%
     EarlySent --> [*]: next session
     StrongSent --> [*]: next session
 ```
@@ -137,8 +177,9 @@ Settings).
 
 ## Saved state
 
-The engine's `state` (each symbol's high, its last quote's time and price, and its cycle: which
-thresholds fired, at what high and when) is `Codable`. The app saves it in `alert-state.json`, next
+The engine's `state` (each symbol's high, with the highest bar's high it counted, its last
+quote's time and price, and its cycle: which thresholds fired, at what high and when) is
+`Codable`. The app saves it in `alert-state.json`, next
 to the settings, after each poll that changed it, and hands it back to the engine at launch, so a
 pullback that already alerted doesn't alert again after a relaunch, and the cooldown still holds.
 
@@ -149,6 +190,9 @@ the same day doesn't alert again. A missing file, or one that can't be read or i
 version, starts every symbol afresh, as a first launch does. A launch whose settings couldn't be
 used runs on the defaults' empty watchlist, so it neither loads nor saves the state, and leaves the
 file for the next launch with the user's settings.
+
+The bars' high is a field a file saved before it was counted doesn't have. Such a file still loads,
+as format version 1, with no bars' high yet, and the next quote's bars bring it in.
 
 ## The calendar
 

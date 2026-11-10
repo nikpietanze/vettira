@@ -61,6 +61,46 @@ func aFileThatIsNotValidStateThrowsAndTheNextSaveReplacesIt(contents: String) th
     }
 }
 
+@Test func aFileSavedBeforeBarsCountedStillLoads() throws {
+    // A state whose high came from a bar, saved without the bars' high, as a file from before
+    // bars counted is: it's still version 1, and loads with the quotes' high.
+    var engine = ReversalAlertEngine()
+    let bars = [PriceBar(timestamp: at("10:00:00.000"), close: 99.9, high: 100.5),
+                PriceBar(timestamp: at("10:05:00.000"), close: 99.9, high: 99.95)]
+    let quote = Quote(symbol: "SPY", price: 100, timestamp: at("10:07:00.000"), source: "Test provider",
+                      session: .regular, intraday: bars)
+    _ = engine.evaluate(quote, thresholds: .standard, now: at("10:07:02.000"))
+    try withAlertStateStore { store in
+        try store.save(engine.state)
+        let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: store.fileURL))
+        let old = removingKey("barHigh", from: saved)
+        #expect(String(decoding: try JSONSerialization.data(withJSONObject: saved), as: UTF8.self).contains("\"barHigh\""))
+        try JSONSerialization.data(withJSONObject: old).write(to: store.fileURL)
+
+        var relaunched = ReversalAlertEngine(state: try store.load())
+        let next = Quote(symbol: "SPY", price: 99.8, timestamp: at("10:07:30.000"), source: "Test provider",
+                         session: .regular)
+        guard case .accepted(let high, _, let alert) = relaunched.evaluate(
+            next, thresholds: .standard, now: at("10:07:32.000")) else {
+            Issue.record("The quote after loading was rejected")
+            return
+        }
+        #expect(high == SessionHigh(price: 100, kind: .observed))
+        #expect(alert == nil)
+    }
+}
+
+/// `json` without `key` in any object, at any depth.
+private func removingKey(_ key: String, from json: Any) -> Any {
+    if let object = json as? [String: Any] {
+        return object.filter { $0.key != key }.mapValues { removingKey(key, from: $0) }
+    }
+    if let array = json as? [Any] {
+        return array.map { removingKey(key, from: $0) }
+    }
+    return json
+}
+
 @Test func aFileOfAnotherVersionThrows() throws {
     try withAlertStateStore { store in
         try store.save(stateAfterAnAlert())

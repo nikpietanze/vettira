@@ -11,7 +11,9 @@ import Foundation
 ///
 /// Each quote also has a made-up day for the chart: a previous close 0.60% below or above the
 /// base price (the symbol decides which, so a watchlist shows days both up and down), and a
-/// 5-minute bar from the open up to now, wandering from near that close to the quote's price.
+/// 5-minute bar from the open up to now, wandering from below the base price to the quote's
+/// price. No bar's high is above the prices the quotes reach, so the high stays the quotes' and
+/// the warnings come when the path says.
 public actor DemoProvider: MarketDataProvider {
     public nonisolated let name = "Demo (made-up prices)"
     public nonisolated let streams = false
@@ -55,21 +57,25 @@ public actor DemoProvider: MarketDataProvider {
         basePrice(symbol) * (1 + (seed(symbol) % 2 == 0 ? -0.6 : 0.6) / 100)
     }
 
-    /// A 5-minute bar from the open of `now`'s session to `now`: a wave that starts halfway
-    /// between the previous close and the base price and settles, by `now`, on the price `percent`
-    /// above the base, the quote's. None outside the regular session or the calendar.
+    /// A 5-minute bar from the open of `now`'s session to `now`: a wave that starts 0.30% below the
+    /// base price and settles, by `now`, on the price `percent` above the base, the quote's. A
+    /// bar's high is the higher of its close and the one before, so no bar's high is above the
+    /// base price or the quote's price, whichever is higher. None outside the regular session or
+    /// the calendar.
     static func bars(
         _ symbol: String, until now: Date, endingAt percent: Double, calendar: MarketCalendar = .usEquities
     ) -> [PriceBar] {
         guard let status = calendar.status(at: now), status.state == .regular else { return [] }
         let base = basePrice(symbol)
-        let gap = (previousClose(symbol) - base) / base * 100 / 2
         let span = now.timeIntervalSince(status.session.open)
         let phase = Double(seed(symbol) % 7)
+        var previous: Double?
         return stride(from: 0, to: span, by: 300).map { elapsed in
             let left = 1 - elapsed / span
-            let close = base * (1 + ((gap + 0.25 * sin(elapsed / 1500 + phase)) * left + percent * (1 - left)) / 100)
-            return PriceBar(timestamp: status.session.open + elapsed, close: close, high: close * 1.0002)
+            // The wave runs from 0.55% to 0.05% below the base.
+            let close = base * (1 + ((-0.30 + 0.25 * sin(elapsed / 1500 + phase)) * left + percent * (1 - left)) / 100)
+            defer { previous = close }
+            return PriceBar(timestamp: status.session.open + elapsed, close: close, high: max(close, previous ?? close))
         }
     }
 

@@ -42,6 +42,40 @@ private let tuesday = TradingDay(year: 2026, month: 11, day: 10)
     #expect(tracker.high == SessionHigh(price: 102, kind: .session))
 }
 
+@Test func withoutAProviderHighTheBarsHighsCountInTheObservedHigh() {
+    var tracker = SessionHighTracker()
+    tracker.record(price: 100, providerHigh: nil, on: monday)
+    tracker.record(barHigh: 101, on: monday)
+    tracker.record(barHigh: 100.5, on: monday)
+    #expect(tracker.high == SessionHigh(price: 101, kind: .observed))
+    // The quotes' own high, which a rearm is judged by, leaves the bars out.
+    #expect(tracker.quotedHigh == 100)
+    tracker.record(price: 101.2, providerHigh: nil, on: monday)
+    #expect(tracker.high == SessionHigh(price: 101.2, kind: .observed))
+    #expect(tracker.quotedHigh == 101.2)
+}
+
+@Test func withAProviderHighTheBarsHighsAddNothing() {
+    var tracker = SessionHighTracker()
+    tracker.record(price: 100, providerHigh: nil, on: monday)
+    tracker.record(barHigh: 103, on: monday)
+    #expect(tracker.high == SessionHigh(price: 103, kind: .observed))
+    // Once the provider supplies the session high, it covers the whole session.
+    tracker.record(price: 100, providerHigh: 102, on: monday)
+    #expect(tracker.high == SessionHigh(price: 102, kind: .session))
+    tracker.record(barHigh: 104, on: monday)
+    #expect(tracker.high == SessionHigh(price: 102, kind: .session))
+    #expect(tracker.quotedHigh == 102)
+}
+
+@Test func aBarsHighFromANewTradingDayStartsTheHighOver() {
+    var tracker = SessionHighTracker()
+    tracker.record(price: 100, providerHigh: nil, on: monday)
+    tracker.record(barHigh: 105, on: monday)
+    tracker.record(price: 99, providerHigh: nil, on: tuesday)
+    #expect(tracker.high == SessionHigh(price: 99, kind: .observed))
+}
+
 @Test func aNewTradingDayStartsTheHighOver() {
     var tracker = SessionHighTracker()
     tracker.record(price: 105, providerHigh: 106, on: monday)
@@ -69,4 +103,11 @@ private let tuesday = TradingDay(year: 2026, month: 11, day: 10)
     let decoded = try JSONDecoder().decode(SessionHighTracker.self, from: JSONEncoder().encode(tracker))
     #expect(decoded == tracker)
     #expect(decoded.high == SessionHigh(price: 101.2, kind: .observed))
+
+    var bars = SessionHighTracker()
+    bars.record(price: 100, providerHigh: nil, on: monday)
+    bars.record(barHigh: 101.5, on: monday)
+    let decodedBars = try JSONDecoder().decode(SessionHighTracker.self, from: JSONEncoder().encode(bars))
+    #expect(decodedBars == bars)
+    #expect(decodedBars.high == SessionHigh(price: 101.5, kind: .observed))
 }

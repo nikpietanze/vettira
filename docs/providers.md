@@ -29,8 +29,9 @@ needs no key, no account and no cookie, and there's nothing to set up.
 - **Not tick-by-tick.** Vettira asks for quotes at an interval and sees the latest price at that
   moment, not every trade between.
 - **Its high may be observed.** When Yahoo supplies the regular session's high, Vettira uses it as
-  the session high. When it doesn't, the only high Vettira has is the highest price it saw while
-  running, which it labels the "observed high"; it can be lower than the day's actual high.
+  the session high. When it doesn't, the only high Vettira has is the highest price it saw in the
+  quotes and in the day's 5-minute bars that came with them, which it labels the "observed high"
+  ([alerts.md](alerts.md#the-days-bars)); it can be lower than the day's actual high.
 
 ## What Vettira sends, and keeps
 
@@ -70,7 +71,7 @@ From each response it reads the regular session's fields only, from `chart.resul
 | `meta.regularMarketDayHigh` | the session high, when present |
 | `meta.currentTradingPeriod.regular` | the session: regular when the quote's time falls in the day's regular period (its close included), closed otherwise, unknown without the period |
 | `meta.chartPreviousClose` | the previous close, when present: what the day's change, up or down, is measured from |
-| `timestamp`, `indicators.quote[0].close` and `.high` | the day's bars: each bar's start time, last price and highest price. A bar Yahoo has no price for (`null`) is a gap in the chart, and a bar whose time isn't after the one before is dropped. Bars that can't be read leave the quote without a chart, never without a quote |
+| `timestamp`, `indicators.quote[0].close` and `.high` | the day's bars: each bar's start time, last price and highest price, for the chart and, when there's no `regularMarketDayHigh`, the observed high. A bar Yahoo has no price for (`null`) is a gap in the chart, and a bar whose time isn't after the one before is dropped. Bars that can't be read leave the quote without a chart, never without a quote |
 
 The endpoint declares no delay, so a quote has none (`providerDelay` is empty), and its age is
 what shows how current it is. Outside the regular session the price, time and high are the last
@@ -153,6 +154,8 @@ testing doesn't change when the warnings come.
 
 Each quote has a made-up day for the chart too: a previous close 0.60% below the base price or
 above it (the symbol decides which, so a watchlist shows days both up and down), and a 5-minute
-bar from the open of the moment's session up to that moment, wandering from halfway between the
-previous close and the base price to the quote's own price. Outside the regular session it has
-no bars.
+bar from the open of the moment's session up to that moment, wandering from below the base price
+to the quote's own price. Each bar's high is the higher of its close and the one before, so no
+bar's high is above the prices the quotes reach: the bars count in the observed high
+([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come on the sixth and
+seventh poll. Outside the regular session it has no bars.

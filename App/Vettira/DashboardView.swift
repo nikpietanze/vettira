@@ -121,7 +121,7 @@ private struct WatchlistTable: View {
             .width(min: 56, ideal: 64)
             TableColumn("High") { row in
                 Text(row.high ?? "\u{2014}").monospacedDigit()
-                    .help("A session high is the provider's; an observed high is the highest Vettira has seen since it started")
+                    .help("A session high is the provider's; an observed high is the highest Vettira saw in its quotes and the day's bars")
             }
             .width(min: 120, ideal: 140)
             TableColumn("From high") { row in

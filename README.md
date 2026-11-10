@@ -56,8 +56,8 @@ not Yahoo Finance's, and the times are New York's, the exchange's (EST).</sub></
 Vettira asks for each enabled symbol's latest quote, one request at a time. It tracks each
 symbol's high for the US regular session (09:30 to 16:00 New York time, with holidays and early
 closes), and fires an alert when the drop from that high crosses a threshold. When the data
-doesn't include the session's high, Vettira uses the highest price it has seen and labels it the
-"observed high". Alerts only fire on fresh quotes in regular hours.
+doesn't include the session's high, Vettira uses the highest price it has seen, in its quotes and
+the day's 5-minute bars, and labels it the "observed high". Alerts only fire on fresh quotes in regular hours.
 
 More: [how alerts fire](docs/alerts.md) and [the architecture](docs/architecture.md).
 
