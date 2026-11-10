@@ -21,15 +21,15 @@ menu bar and notifies you when a price falls from its session high by a threshol
 </p>
 
 <p align="center">
-  <img src="docs/assets/popover.png" alt="Vettira's menu-bar popover: three symbols with today's chart, their price, observed high, change from the high, quote age and the warning this session, the connection's health, two switches, and the Open Dashboard, Settings and Quit buttons" width="360">
+  <img src="docs/assets/popover.png" alt="Vettira's menu-bar popover: three symbols, each with today's chart, its price, observed high, change from the high, quote age and the warning this session; the connection's health; the Alert sound and Launch at Login checkboxes; the Open Dashboard, Settings and Quit buttons; and a line saying where the quotes come from" width="360">
 </p>
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="Vettira's dashboard window: the watchlist as a table of price, high, change from the high, thresholds, quote time and age, and the warning this session, above the connection's health and diagnostics" width="860">
+  <img src="docs/assets/dashboard.png" alt="Vettira's dashboard window: fields to add and search symbols above the watchlist as a table, each row with a checkbox to monitor it, a pin, its symbol, a button to show it in the menu bar, its price, high, change from the high, thresholds, quote time and age, the warning this session and buttons to move or remove it, then the connection's health and diagnostics and a Settings button" width="860">
 </p>
 
 <p align="center">
-  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and the switch for the chart in the menu bar" width="420">
+  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and the switch for the chart in the menu bar, down to the end of its menu-bar section" width="420">
 </p>
 
 <p align="center"><sub>The menu-bar item with today's chart, its popover, the dashboard and
@@ -181,18 +181,19 @@ shows, storage) on recorded and mock quotes, and never call Yahoo.
 The menu bar shows one symbol's price and its change from the high, with a small chart of its
 price today, updated with each quote: green while it's above the previous close, red while it's below
 (up or down on the day, not advice; turn it off in Settings for a narrower menu bar). Click it for
-every symbol's chart, price, high, pullback and data age, and the connection's health. A pullback past a threshold sends
+every symbol's chart, price, high, pullback and data age, the connection's health, and checkboxes for the
+alert sound and Launch at Login. A pullback past a threshold sends
 a notification, worded as a possible reversal, never advice. Closing a window leaves Vettira
 running in the menu bar, still monitoring, until you pick **Quit Vettira**.
 
 **Open Dashboard**, in that popover, opens a window with the whole watchlist in a table: each
 symbol's price, high (session or observed), change from the high, thresholds, quote time, data age
 and last warning, then the connection's health and diagnostics. Add a symbol by its ticker, search
-the list, drag rows or use the arrows to reorder it, pin symbols to the top, switch one off to stop
+the list, drag rows or use the arrows to reorder it, pin symbols to the top, turn one off to stop
 updating it, give one its own thresholds, or pick the one the menu bar shows. **Settings…** (in the
 popover and the dashboard, or Cmd-, while a window is open) sets the update interval, how old a
-quote can be before it's stale, the default thresholds and whether the menu bar shows its chart,
-and has **Test Connection**. Each
+quote can be before it's stale, the default thresholds, whether the menu bar shows its chart, the
+alert sound and Launch at Login, and has **Test Connection**. Each
 change is saved as you make it. While one of its windows is open Vettira shows in the Dock and the
 app switcher; closing the last one takes it back to the menu bar only.
 

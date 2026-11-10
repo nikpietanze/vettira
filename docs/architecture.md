@@ -160,7 +160,7 @@ copy of the settings, which is saved whole straight away and handed to the monit
 (`update(settings:)`), so it applies from the next poll and survives a relaunch. An edit the
 settings' types refuse changes nothing.
 
-**Launch at Login** is a switch in the popover and in Settings, off until the user turns it on. It registers the
+**Launch at Login** is a checkbox in the popover and a switch in Settings, off until the user turns it on. It registers the
 app with `SMAppService.mainApp`; when macOS wants the user to approve it, the popover says so and
 opens Login Items.
 
