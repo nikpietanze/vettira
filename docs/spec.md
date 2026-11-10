@@ -50,13 +50,22 @@ Scope: **US regular trading hours (09:30–16:00 America/New_York)**, with a new
 
 ## MVP acceptance criteria
 
-- [ ] User can test the connection to Yahoo Finance's unofficial endpoints with no key or account, and the app says plainly that the data is unofficial, not endorsed by Yahoo, and governed by Yahoo's terms; no app-developer key is bundled.
-- [ ] User can monitor at least **five user-selected stock/ETF symbols** concurrently, with per-symbol thresholds.
-- [ ] Menu bar stays active and alerts keep running after dashboard is closed; dashboard can reopen without losing state.
-- [ ] Fresh-data threshold crossings trigger correct, de-duplicated notifications; false signals are labeled as possible, not certain, reversals.
-- [ ] App explicitly identifies stale/delayed data, provider failures, rate limiting or blocking, and whether highs are **session** or **observed**.
-- [ ] Tests cover session reset, after-hours/half-days, duplicate alerts, higher highs/rearming, out-of-order quotes, reconnection, and rate-limit behavior using recorded/mock quotes.
-- [ ] Public repository contains build/run instructions, provider setup guide, privacy statement, license (e.g., MIT), and clear **data-source and Yahoo terms** disclaimers.
+Each criterion is ticked with where it's proven: a test in `Tests/VettiraCoreTests/` (by file and name) or a doc.
+
+- [x] User can test the connection to Yahoo Finance's unofficial endpoints with no key or account, and the app says plainly that the data is unofficial, not endorsed by Yahoo, and governed by Yahoo's terms; no app-developer key is bundled.
+  - Proof: Settings' **Test Connection** and its disclaimer with a link to Yahoo's terms ([README](../README.md#where-the-data-comes-from)); `ConnectionTestReportTests`; `YahooFinanceProviderTests.itSaysItsUnofficial` and `asksForEachSymbolOnceInOrderWithAnHonestUserAgent` (no key in any request).
+- [x] User can monitor at least **five user-selected stock/ETF symbols** concurrently, with per-symbol thresholds.
+  - Proof: `QuoteMonitorTests.fiveSymbolsAtOnceEachAlertOnItsOwnThresholds`, `eachSymbolUsesItsOwnThresholds`; `ReversalAlertEngineTests.thresholdsArePerSymbol`; `WatchlistTests.aSymbolUsesItsOwnThresholdsOrTheDefaults`; a demo run watching five symbols, each on its own thresholds.
+- [x] Menu bar stays active and alerts keep running after dashboard is closed; dashboard can reopen without losing state.
+  - Proof: the app state and the monitor live outside every window ([architecture](architecture.md#the-app), [Polling](architecture.md#polling)); `DashboardDisplayTests.vettiraShowsInTheDockWhileAWindowIsOpen`, `openingOrClosingAWindowTwiceChangesNothing`.
+- [x] Fresh-data threshold crossings trigger correct, de-duplicated notifications; false signals are labeled as possible, not certain, reversals.
+  - Proof: `ReversalAlertEngineTests.eachThresholdFiresOncePerCycle`, `aDropPastBothThresholdsAtOnceSendsOneStrongerWarning`, `restoredStateDoesNotAlertAgain`; `QuoteMonitorTests.aPullbackPastAThresholdAlertsOnce`; `DemoProviderTests.aDemoRunWarnsOnceEarlyThenOnceStrongerAndNotifiesEachOnce`; `AlertNotificationTests.aNotificationIsAPossibleReversalWithEverythingTheSpecAsksFor`, `aNotificationNeverReadsAsAdviceOrCertainty`.
+- [x] App explicitly identifies stale/delayed data, provider failures, rate limiting or blocking, and whether highs are **session** or **observed**.
+  - Proof: `DisplayTests.aStaleQuoteSaysSo`, `aFailingConnectionSaysWhatHappenedAndWhatToDo`, `aSessionHighIsLabelledAsOne`; `ConnectionTestReportTests.aQuoteTheProviderSaysIsDelayedIsStale`; `ProviderErrorTests.eachKindOfFailureReadsDifferently`, `rateLimitedSaysHowLongTheProviderAskedToWait`; `YahooFinanceProviderTests.forbiddenStopsThePollAsBlocked`; `SessionHighTrackerTests.theHighsAreLabelledSessionAndObserved`.
+- [x] Tests cover session reset, after-hours/half-days, duplicate alerts, higher highs/rearming, out-of-order quotes, reconnection, and rate-limit behavior using recorded/mock quotes.
+  - Proof: `ReversalAlertEngineTests.aNewSessionResetsTheHighAndRearms`, `anExtendedHoursQuoteChangesNothing`, `onAnEarlyCloseDayAlertsStopAt1300`, `eachThresholdFiresOncePerCycle`, `aMeaningfulNewHighRearmsBothThresholds`, `outOfOrderAndDuplicateQuotesAreRejected`, `recordedYahooQuotesAreMeasuredFromTheSessionHigh`; `QuoteStreamerTests.aDroppedConnectionReconnectsAfterABackoffThatDoubles`; `QuoteMonitorTests.failuresBackOffDoublingUpToFifteenMinutesThenRecover`, `aRateLimitWaitsAtLeastAsLongAsTheProviderAsks`.
+- [x] Public repository contains build/run instructions, provider setup guide, privacy statement, license (e.g., MIT), and clear **data-source and Yahoo terms** disclaimers.
+  - Proof: [README](../README.md#build-and-run) (build and run, and [where the data comes from](../README.md#where-the-data-comes-from)), [providers](providers.md), [PRIVACY.md](../PRIVACY.md), [LICENSE](../LICENSE) (MIT).
 
 ## Out of scope for v1
 

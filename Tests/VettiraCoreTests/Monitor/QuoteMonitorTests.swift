@@ -347,6 +347,34 @@ private func allAlerts(_ alerts: AsyncStream<ReversalAlert>) async -> [ReversalA
         #expect(await harness.state("QQQ")?.lastAlert?.thresholdPercent == 0.1)
     }
 
+    // The spec's acceptance criterion: five symbols at once, each on its own thresholds.
+    @Test(.timeLimit(.minutes(1))) func fiveSymbolsAtOnceEachAlertOnItsOwnThresholds() async throws {
+        let own: [(String, early: Double, strong: Double)] = [
+            ("SPY", 0.10, 0.20), ("QQQ", 0.20, 0.40), ("DIA", 0.15, 0.25), ("IWM", 0.35, 0.50), ("AAPL", 0.28, 0.45),
+        ]
+        let symbols = own.map(\.0)
+        var watch = settings(symbols)
+        for (raw, early, strong) in own {
+            try watch.watchlist.setThresholds(try PullbackThresholds(early: early, strong: strong), for: symbol(raw))
+        }
+        var alerts: AsyncStream<ReversalAlert>
+        do {
+            let harness = Harness(symbols, replies: [
+                MockProvider.prices(Dictionary(uniqueKeysWithValues: symbols.map { ($0, 100) })),
+                // 0.30% below the high for every symbol.
+                MockProvider.prices(Dictionary(uniqueKeysWithValues: symbols.map { ($0, 99.7) })),
+            ])
+            await harness.monitor.update(settings: watch)
+            alerts = harness.monitor.alerts
+            await harness.poll(2)
+            #expect(await harness.state("IWM")?.lastAlert == nil)
+        }
+        let sent = await allAlerts(alerts)
+        #expect(sent.map(\.symbol) == ["SPY", "QQQ", "DIA", "AAPL"])
+        #expect(sent.map(\.signal) == [.strong, .early, .strong, .early])
+        #expect(sent.map(\.thresholdPercent) == [0.20, 0.20, 0.25, 0.28])
+    }
+
     @Test func savedEngineStateKeepsAnAlertFromRepeating() async {
         let first = Harness(replies: [MockProvider.prices(["SPY": 100]), MockProvider.prices(["SPY": 99.7])])
         await first.poll(2)
