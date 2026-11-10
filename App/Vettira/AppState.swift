@@ -53,28 +53,16 @@ final class AppState {
     @ObservationIgnored private let log = Logger(subsystem: "com.andiamosoftware.vettira", category: "app")
 
     init(options: LaunchOptions) {
-        var store: SettingsStore?
-        var settings = UserSettings.defaults
-        // Whether these are the user's settings, not the defaults a file that couldn't be used
-        // left the run with.
-        var settingsLoaded = false
+        var storage: LaunchStorage?
         do {
-            store = try SettingsStore(
-                directory: options.storageDirectory(applicationSupport: SettingsStore.applicationSupportDirectory))
+            storage = try LaunchStorage(loading: SettingsStore(
+                directory: options.storageDirectory(applicationSupport: SettingsStore.applicationSupportDirectory)))
+            settingsProblem = storage?.problem?.errorDescription
         } catch {
             settingsProblem = "Couldn't find Application Support: \(error.localizedDescription)"
         }
-        if let loading = store {
-            do {
-                settings = try loading.load()
-                settingsLoaded = true
-            } catch {
-                settingsProblem = error.errorDescription
-                // A file that's there but can't be read is left alone: saving would replace it.
-                if case .unreadable = error { store = nil }
-            }
-        }
-        self.store = store
+        store = storage?.settingsStore
+        let settings = storage?.settings ?? .defaults
         self.settings = settings
 
         let provider: any MarketDataProvider
@@ -92,11 +80,9 @@ final class AppState {
         self.provider = provider
         // What the alert engine remembers, so a relaunch doesn't alert again for a pullback it
         // already alerted. A file that can't be used is logged and alerts start afresh. Kept only
-        // when the settings loaded: a run on the defaults because settings.json couldn't be read
-        // or was corrupt has an empty watchlist, which would drop every symbol's saved state.
+        // when the settings loaded (`LaunchStorage.alertStateStore`).
         let stateLog = Logger(subsystem: "com.andiamosoftware.vettira", category: "alert-state")
-        let stateStore = options.keepsAlertState && settingsLoaded
-            ? store.map { AlertStateStore(directory: $0.directory) } : nil
+        let stateStore = options.keepsAlertState ? storage?.alertStateStore : nil
         var engineState = ReversalAlertEngine.State()
         if let stateStore {
             do {

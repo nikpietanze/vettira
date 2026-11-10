@@ -217,6 +217,11 @@ what the engine remembers, so a relaunch doesn't alert again for a pullback it a
 ([alerts.md](alerts.md#saved-state)): a missing file is an empty state, and one that can't be
 read, isn't valid state or is another version is logged and alerts start afresh; the next save
 replaces it. A change to the state's format bumps the version rather than migrating it.
+`LaunchStorage` loads the settings at launch and decides where the run saves them and the alert
+state: a run on the defaults because `settings.json` couldn't be used keeps no alert state, since
+its empty watchlist would drop every symbol's, and leaves `alert-state.json` as it is; one whose
+`settings.json` is there but couldn't be read doesn't save its settings either, so as not to
+replace the file.
 
 ## The pipeline
 

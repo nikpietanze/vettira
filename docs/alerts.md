@@ -146,7 +146,9 @@ Saved state never carries one session's cycle into the next: the first quote of 
 day starts a new high and a new cycle, as it does without a relaunch. A symbol taken off the
 watchlist is forgotten (`removeSymbols(notIn:)`); a disabled one is kept, so turning it back on
 the same day doesn't alert again. A missing file, or one that can't be read or is another
-version, starts every symbol afresh, as a first launch does.
+version, starts every symbol afresh, as a first launch does. A launch whose settings couldn't be
+used runs on the defaults' empty watchlist, so it neither loads nor saves the state, and leaves the
+file for the next launch with the user's settings.
 
 ## The calendar
 

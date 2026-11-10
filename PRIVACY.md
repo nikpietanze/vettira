@@ -18,7 +18,8 @@ Everything stays on your Mac, in two files, plain JSON, in
   you remove from the watchlist is removed from it too.
 
 Nothing else. If `settings.json` isn't valid settings, Vettira moves it to `settings.corrupt.json`
-in the same folder and starts from the defaults, so the old file isn't overwritten. If
+in the same folder and starts from the defaults, so the old file isn't overwritten, and it
+leaves `alert-state.json` as it is until it next starts with your settings. If
 `alert-state.json` can't be read, Vettira starts its alerts afresh and replaces it.
 
 ## Notifications and Launch at Login
