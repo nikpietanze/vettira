@@ -16,11 +16,8 @@ import VettiraCore
 @MainActor
 final class MenuBarController: NSObject, NSWindowDelegate {
     private let state: AppState
-    /// The menu-bar item: none in a snapshot run, which puts nothing on screen.
-    private let item: NSStatusItem?
-    /// What the menu bar shows: the item's button, or in a snapshot run one that's never on
-    /// screen, which `SnapshotRenderer` draws.
-    let button: NSButton
+    private let item: NSStatusItem
+    private var button: NSButton { item.button! }
     private let popover = NSPopover()
     /// The windows made so far, by identifier, kept when they're closed.
     private var windows: [String: NSWindow] = [:]
@@ -29,20 +26,10 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     private let remembersFrames: Bool
     private let log = Logger(subsystem: "com.andiamosoftware.vettira", category: "menu-bar")
 
-    /// `inMenuBar` false makes no menu-bar item, only the button it would have, off screen.
-    init(state: AppState, remembersFrames: Bool, inMenuBar: Bool = true) {
+    init(state: AppState, remembersFrames: Bool) {
         self.state = state
         self.remembersFrames = remembersFrames
-        if inMenuBar {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            self.item = item
-            button = item.button ?? NSButton()
-        } else {
-            item = nil
-            button = NSButton(title: "", target: nil, action: nil)
-            button.isBordered = false
-            button.font = .menuBarFont(ofSize: 0)
-        }
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         popover.behavior = .transient
         let content = NSHostingController(
@@ -53,12 +40,12 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         content.sizingOptions = .preferredContentSize
         popover.contentViewController = content
         button.imagePosition = .imageLeading
-        if item != nil {
-            button.target = self
-            button.action = #selector(togglePopover(_:))
-        }
+        button.target = self
+        button.action = #selector(togglePopover(_:))
         render()
     }
+
+    private static let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
 
     /// Shows the menu-bar status, and again each time it changes.
     private func render() {
@@ -69,18 +56,13 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         }
         let button = button
         #if DEBUG
-        let changed = button.title != status.title
+        let changed = button.attributedTitle.string != status.title
         #endif
-        let icon = NSImage(systemSymbolName: status.indicator.systemImage, accessibilityDescription: nil)
-        if let icon, let chart = status.chart {
-            button.image = PriceChartImage.menuBar(icon: icon, chart: chart)
-        } else {
-            button.image = icon
-        }
-        button.title = status.title
+        button.image = Self.image(status)
+        button.attributedTitle = Self.title(status)
         button.toolTip = status.accessibilityValue
-        // The label names the item whatever it shows; the value is its status, the chart's
-        // description included. The button's cell is the element accessibility reads, so both get them.
+        // The label names the item whatever it shows; the value is its status in words, the
+        // colours' meaning included. The button's cell is the element accessibility reads, so both get them.
         for element in [button, button.cell].compactMap({ $0 as? NSAccessibilityProtocol & NSObject }) {
             element.setAccessibilityLabel(Vettira.name)
             element.setAccessibilityValue(status.accessibilityValue)
@@ -88,6 +70,28 @@ final class MenuBarController: NSObject, NSWindowDelegate {
         #if DEBUG
         if changed { log.info("Menu-bar item accessibility: label \(button.cell?.accessibilityLabel() ?? "none", privacy: .public), title \(button.cell?.accessibilityTitle() ?? "none", privacy: .public)") }
         #endif
+    }
+
+    /// With nothing to show, the app's icon, so there's still an item to click; otherwise none.
+    static func image(_ status: MenuBarStatus) -> NSImage? {
+        status.segments.isEmpty ? NSImage(systemSymbolName: "chart.xyaxis.line", accessibilityDescription: nil) : nil
+    }
+
+    /// The status's text in the menu bar's font with digits all the same width, so the item
+    /// doesn't twitch as a price changes, each piece in its tone's colour: system colours, which follow a light
+    /// or dark menu bar.
+    static func title(_ status: MenuBarStatus) -> NSAttributedString {
+        let title = NSMutableAttributedString()
+        for segment in status.segments {
+            let color: NSColor = switch segment.tone {
+            case .normal: .labelColor
+            case .up: .systemGreen
+            case .down: .systemRed
+            case .dimmed: .secondaryLabelColor
+            }
+            title.append(NSAttributedString(string: segment.text, attributes: [.font: font, .foregroundColor: color]))
+        }
+        return title
     }
 
     @objc private func togglePopover(_ sender: Any?) {
@@ -155,18 +159,5 @@ final class MenuBarController: NSObject, NSWindowDelegate {
     private func applyDockPresence() {
         NSApp.setActivationPolicy(dock.showsInDock ? .regular : .accessory)
         log.notice("Dock: \(self.dock.showsInDock ? "shown" : "hidden", privacy: .public), windows open: \(self.dock.openWindows.sorted().joined(separator: ", "), privacy: .public)")
-    }
-}
-
-extension MenuBarStatus.Indicator {
-    var systemImage: String {
-        switch self {
-        case .empty, .notMonitored, .waiting, .live: "chart.xyaxis.line"
-        case .pullback(.early): "arrow.down.right"
-        case .pullback(.strong): "arrow.down.right.circle.fill"
-        case .closed: "moon.zzz"
-        case .stale: "hourglass"
-        case .unavailable: "exclamationmark.triangle"
-        }
     }
 }

@@ -6,7 +6,9 @@ import Foundation
 ///
 /// Each symbol starts at its own base price and, one step per poll, follows `path`: up to a high
 /// 0.30% above the base, back down past the default early warning (0.25% below the high) and then
-/// past the stronger one (0.40%), then it holds at the last step. Each quote is timestamped at the
+/// past the stronger one (0.40%), then it holds at the last step. Every other symbol follows it a
+/// step quicker (`path(for:)`), so when the others fall to their stronger warning it's rising
+/// again, and the menu bar shows prices both rising and falling. Each quote is timestamped at the
 /// clock's now, in the regular session, with no session high, so its high is the observed one.
 ///
 /// Each quote also has a made-up day for the chart: a previous close 0.60% below or above the
@@ -19,6 +21,12 @@ public actor DemoProvider: MarketDataProvider {
 
     /// Percent above each symbol's base price, one step per poll.
     public static let path: [Double] = [0, 0.10, 0.20, 0.30, 0.15, 0.00, -0.15, -0.10]
+
+    /// The symbol's path, the same on every run: `path`, or for every other symbol `path` without
+    /// its 0.15 step, so it warns a poll earlier and its seventh step is up, not down.
+    public static func path(for symbol: String) -> [Double] {
+        seed(symbol) % 2 == 0 ? path : path.filter { $0 != 0.15 }
+    }
 
     private let now: @Sendable () -> Date
     private var steps: [String: Int] = [:]
@@ -43,7 +51,8 @@ public actor DemoProvider: MarketDataProvider {
 
     private func quote(for symbol: String) -> Quote {
         let step = steps[symbol, default: 0]
-        let percent = Self.path[min(step, Self.path.count - 1)]
+        let path = Self.path(for: symbol)
+        let percent = path[min(step, path.count - 1)]
         let time = now()
         return Quote(
             symbol: symbol, price: Self.basePrice(symbol) * (1 + percent / 100), timestamp: time, source: name,

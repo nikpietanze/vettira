@@ -1,8 +1,10 @@
 import Foundation
 
-/// What the menu-bar item shows: the watchlist's menu-bar symbol with its latest price and its
-/// change from the high, or why it can't (no quote yet, the market closed, stale data, a provider
-/// error), and whether a warning fired that the price is still past.
+/// What the menu-bar item shows for one symbol: its ticker and latest price, `SPY 741.12`, the
+/// characters that changed at its last change coloured by direction (`PriceChange`); or, dimmed,
+/// a price that isn't live (the market closed, stale data), or a sign there's no price (waiting,
+/// turned off, no quote). No chart and no words: the detail, for the tooltip and VoiceOver, says
+/// it all in words, the price's age and any warning the price is still past included.
 public struct MenuBarStatus: Equatable, Sendable {
     public enum Indicator: Equatable, Sendable {
         /// The watchlist is empty, so there's no symbol to show.
@@ -24,64 +26,106 @@ public struct MenuBarStatus: Equatable, Sendable {
         case unavailable
     }
 
+    /// How a piece of the menu bar's text is drawn.
+    public enum Tone: Equatable, Sendable {
+        /// The menu bar's own text colour.
+        case normal
+        /// Characters that changed when the price last rose: system green.
+        case up
+        /// Characters that changed when the price last fell: system red.
+        case down
+        /// The secondary text colour: a price that isn't live, or no price.
+        case dimmed
+    }
+
+    public struct Segment: Equatable, Sendable {
+        public let text: String
+        public let tone: Tone
+
+        public init(_ text: String, _ tone: Tone) {
+            self.text = text
+            self.tone = tone
+        }
+    }
+
     /// The symbol shown, or `nil` when the watchlist is empty.
     public let symbol: TickerSymbol?
-    /// The menu bar's text: `SPY 512.30 −0.31%`, `SPY 512.30 · stale`; empty when there's no symbol.
-    public let title: String
+    /// The menu bar's text in pieces, each with its tone: `SPY 74` normal then `1.12` green.
+    /// Empty when there's no symbol.
+    public private(set) var segments: [Segment]
     public let indicator: Indicator
     /// A sentence saying the same in full.
     public let detail: String
-    /// The chart of the symbol's day, next to the text: when the settings show one and the latest
-    /// quote has the bars to draw it, whatever the status (the text says when it's closed or stale).
-    public private(set) var chart: PriceChart?
+    /// The price's last change in words, when its colours show: `Last change: up from 740.43.`
+    public private(set) var changeDescription: String?
 
-    /// Everything the item says, for the tooltip and VoiceOver: `detail`, then the chart in words.
+    /// The menu bar's text: `SPY 741.12`, `SPY …`; empty when there's no symbol.
+    public var title: String { segments.map(\.text).joined() }
+
+    /// Everything the item says, for the tooltip and VoiceOver: `detail`, then the last change.
     public var accessibilityValue: String {
-        [detail, chart?.description].compactMap { $0 }.joined(separator: " ")
+        [detail, changeDescription].compactMap { $0 }.joined(separator: " ")
     }
 
-    /// The status at `now`. A quote older than the settings' staleness tolerance is stale.
+    /// The status of `symbol` (the menu-bar symbol by default) at `now`, coloured by its last
+    /// change in `changes`. A quote older than the settings' staleness tolerance is stale.
     public init(
-        settings: UserSettings, snapshot: MonitorSnapshot, now: Date, calendar: MarketCalendar = .usEquities
+        settings: UserSettings, snapshot: MonitorSnapshot, now: Date, showing symbol: TickerSymbol? = nil,
+        changes: PriceChanges = PriceChanges(), calendar: MarketCalendar = .usEquities
     ) {
-        self.init(text: settings, snapshot: snapshot, now: now, calendar: calendar)
-        if settings.showsChartInMenuBar, let symbol, let quote = snapshot.symbols[symbol]?.quote {
-            chart = PriceChart(quote: quote, now: now, calendar: calendar)
+        self.init(text: settings, symbol: symbol ?? settings.watchlist.menuBarSymbol, snapshot: snapshot, now: now,
+                  calendar: calendar)
+        guard let symbol = self.symbol, let price = snapshot.symbols[symbol]?.quote?.price,
+              let change = changes[symbol], change.to == DisplayFormat.price(price)
+        else { return }
+        switch indicator {
+        case .live, .pullback:
+            let tone: Tone = change.direction == .up ? .up : .down
+            segments = [Segment("\(symbol) \(change.unchanged)", .normal), Segment(String(change.changed), tone)]
+                .filter { !$0.text.isEmpty }
+            changeDescription = "Last change: \(change.direction == .up ? "up" : "down") from \(change.from)."
+        default:
+            break
         }
     }
 
-    private init(text settings: UserSettings, snapshot: MonitorSnapshot, now: Date, calendar: MarketCalendar) {
+    private init(
+        text settings: UserSettings, symbol: TickerSymbol?, snapshot: MonitorSnapshot, now: Date,
+        calendar: MarketCalendar
+    ) {
         let staleTolerance = settings.alertSettings.staleTolerance
-        guard let symbol = settings.watchlist.menuBarSymbol else {
-            self.init(nil, "", .empty, "The watchlist is empty, so there's no symbol to show.")
+        guard let symbol else {
+            self.init(nil, [], .empty, "The watchlist is empty, so there's no symbol to show.")
             return
         }
+        func dimmed(_ text: String) -> [Segment] { [Segment("\(symbol) \(text)", .dimmed)] }
         guard let state = snapshot.symbols[symbol] else {
-            self.init(symbol, "\(symbol) off", .notMonitored, "\(symbol) is turned off, so it isn't monitored.")
+            self.init(symbol, dimmed("off"), .notMonitored, "\(symbol) is turned off, so it isn't monitored.")
             return
         }
         guard let quote = state.quote else {
             if let problem = state.problem {
-                self.init(symbol, "\(symbol) \u{2014}", .unavailable, problem.sentence(for: symbol))
+                self.init(symbol, dimmed("\u{2014}"), .unavailable, problem.sentence(for: symbol))
             } else if let error = snapshot.diagnostics.lastError {
-                self.init(symbol, "\(symbol) \u{2014}", .unavailable, "No quote for \(symbol): \(error.message)")
+                self.init(symbol, dimmed("\u{2014}"), .unavailable, "No quote for \(symbol): \(error.message)")
             } else {
-                self.init(symbol, "\(symbol) \u{2026}", .waiting, "Waiting for the first quote for \(symbol).")
+                self.init(symbol, dimmed("\u{2026}"), .waiting, "Waiting for the first quote for \(symbol).")
             }
             return
         }
         let price = DisplayFormat.price(quote.price)
         let age = DisplayFormat.duration(quote.age(at: now))
+        // Dimmed when it isn't live, so it never looks it; until it changes, a live price is all
+        // the menu bar's own colour.
+        let title = [Segment("\(symbol) \(price)", .normal)]
         if snapshot.diagnostics.marketState != .regular {
             self.init(
-                symbol, "\(symbol) \(price) \u{00B7} closed", .closed,
-                "\(symbol) \(price), the last regular-session price. The market is closed, so nothing alerts.")
+                symbol, dimmed(price), .closed,
+                "\(symbol) \(price), the last regular-session price. The market is closed, so nothing alerts. "
+                    + "Quote \(age) old.")
         } else if state.isStale(at: now, tolerance: staleTolerance) {
-            self.init(
-                symbol, "\(symbol) \(price) \u{00B7} stale", .stale,
-                "\(symbol) \(price): the quote is \(age) old, too old to alert on.")
+            self.init(symbol, dimmed(price), .stale, "\(symbol) \(price): the quote is \(age) old, too old to alert on.")
         } else if let high = state.high, let pullback = state.pullbackPercent {
-            let title = "\(symbol) \(price) \(DisplayFormat.changeFromHigh(pullback))"
             let position = "\(symbol) \(price) is \(DisplayFormat.percent(pullback)) below its \(high.kind.label) of "
                 + "\(DisplayFormat.price(high.price)). Quote \(age) old."
             let thresholds = settings.thresholds(for: symbol) ?? settings.defaultThresholds
@@ -94,13 +138,13 @@ public struct MenuBarStatus: Equatable, Sendable {
                 self.init(symbol, title, .live, position)
             }
         } else {
-            self.init(symbol, "\(symbol) \(price)", .live, "\(symbol) \(price). Quote \(age) old.")
+            self.init(symbol, title, .live, "\(symbol) \(price). Quote \(age) old.")
         }
     }
 
-    private init(_ symbol: TickerSymbol?, _ title: String, _ indicator: Indicator, _ detail: String) {
+    private init(_ symbol: TickerSymbol?, _ segments: [Segment], _ indicator: Indicator, _ detail: String) {
         self.symbol = symbol
-        self.title = title
+        self.segments = segments
         self.indicator = indicator
         self.detail = detail
     }

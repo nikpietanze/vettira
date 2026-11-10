@@ -11,7 +11,7 @@ Everything stays on your Mac, in two files, plain JSON, in
 - `settings.json` holds your watchlist (its symbols and their order, which are pinned or enabled,
   each symbol's own thresholds, and the symbol the menu bar shows), your default thresholds, how
   often Vettira updates and how old a quote can be before it's stale, whether alerts play a
-  sound, and whether the menu bar shows its chart.
+  sound, and how often the menu bar cycles through your symbols.
 - `alert-state.json` holds what Vettira remembers about each symbol on your watchlist, so it
   doesn't alert you twice for the same pullback after you quit and reopen it: the symbol's high,
   the last quote's time and price, and which thresholds alerted, at what high and when. A symbol

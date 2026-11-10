@@ -86,7 +86,7 @@ import VettiraCore
     var engine = ReversalAlertEngine()
     var fired: [PullbackSignal] = []
     var time = nyTime("10:00:00")
-    for percent in DemoProvider.path + [DemoProvider.path.last!, DemoProvider.path.last!] {
+    for percent in DemoProvider.path(for: "SPY") + [DemoProvider.path.last!, DemoProvider.path.last!] {
         let quote = regularQuote(DemoProvider.basePrice("SPY") * (1 + percent / 100), at: time)
         if case .accepted(_, _, let alert?) = engine.evaluate(quote, thresholds: .standard, now: time + 1) {
             fired.append(alert.signal)
@@ -99,7 +99,8 @@ import VettiraCore
 @Test func theDemosBarsNeverRaiseItsHigh() async throws {
     // The demo's quotes, with their made-up day's bars, polled every 15 s from 10:00: for a
     // symbol up on the day (SPY) and one down (QQQ), the high is the path's 0.30% above the base,
-    // and the warnings come on the sixth and seventh poll, as docs/providers.md says.
+    // and the warnings come on the sixth and seventh poll, or a poll earlier for every other
+    // symbol (QQQ), as docs/providers.md says.
     let clock = DemoClock(nyTime("10:00:00"))
     let provider = DemoProvider(now: { clock.now })
     var engine = ReversalAlertEngine()
@@ -120,8 +121,30 @@ import VettiraCore
     }
     for symbol in ["SPY", "QQQ"] {
         #expect(highs[symbol] == SessionHigh(price: DemoProvider.basePrice(symbol) * (1 + DemoProvider.path[3] / 100), kind: .observed))
-        #expect(fired[symbol] == [6: .early, 7: .strong])
     }
+    #expect(fired["SPY"] == [6: .early, 7: .strong])
+    #expect(fired["QQQ"] == [5: .early, 6: .strong])
+}
+
+// When the last symbol falls to its stronger warning (when a snapshot is taken), another is
+// rising again, so the menu bar shows both colours.
+@Test func atTheSeventhPollOneDemoSymbolFallsAndAnotherRises() async throws {
+    let now = nyTime("10:00:00")
+    let provider = DemoProvider(now: { now })
+    var changes = PriceChanges()
+    for _ in 1...7 {
+        let batch = try await provider.quotes(for: ["SPY", "QQQ", "DIA"])
+        changes.record(MonitorSnapshot(
+            symbols: Dictionary(uniqueKeysWithValues: batch.quotes.map { quote in
+                var state = SymbolSnapshot(symbol: displayTicker(quote.symbol))
+                state.quote = quote
+                return (state.symbol, state)
+            }),
+            diagnostics: MonitorDiagnostics(source: provider.name)))
+    }
+    #expect(changes[displayTicker("SPY")]?.direction == .down)
+    #expect(changes[displayTicker("DIA")]?.direction == .down)
+    #expect(changes[displayTicker("QQQ")]?.direction == .up)
 }
 
 private final class DemoClock: @unchecked Sendable {

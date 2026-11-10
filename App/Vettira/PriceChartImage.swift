@@ -1,12 +1,12 @@
 import AppKit
 import VettiraCore
 
-/// Draws a `PriceChart`: its lines in system green when the price is up on the day and red when
+/// Draws a `PriceChart` for a popover row: its lines in system green when the price is up on the day and red when
 /// it's down, the previous close as a faint dashed line. Where the points go is the chart's to
 /// say; this only strokes them. The images draw when shown, not once, so their colours follow the
-/// light or dark menu bar and popover they're in.
+/// light or dark popover they're in.
 enum PriceChartImage {
-    /// The chart's size in the menu bar and the popover, in points.
+    /// The chart's size in the popover, in points.
     static let size = NSSize(width: 40, height: 16)
     private static let inset: CGFloat = 1.5
 
@@ -14,26 +14,6 @@ enum PriceChartImage {
     static func image(_ chart: PriceChart) -> NSImage {
         let image = NSImage(size: size, flipped: false) { rect in
             draw(chart, in: rect)
-            return true
-        }
-        image.cacheMode = .never
-        image.accessibilityDescription = chart.description
-        return image
-    }
-
-    /// The status icon, then the chart, for the menu-bar button. The icon is drawn in the label
-    /// colour, as a template image would be.
-    static func menuBar(icon: NSImage, chart: PriceChart) -> NSImage {
-        let gap: CGFloat = 4
-        let total = NSSize(width: icon.size.width + gap + size.width, height: max(icon.size.height, size.height))
-        let image = NSImage(size: total, flipped: false) { rect in
-            let iconRect = NSRect(
-                x: 0, y: (rect.height - icon.size.height) / 2, width: icon.size.width, height: icon.size.height)
-            icon.draw(in: iconRect)
-            NSColor.labelColor.set()
-            iconRect.fill(using: .sourceAtop)
-            draw(chart, in: NSRect(
-                x: iconRect.maxX + gap, y: (rect.height - size.height) / 2, width: size.width, height: size.height))
             return true
         }
         image.cacheMode = .never

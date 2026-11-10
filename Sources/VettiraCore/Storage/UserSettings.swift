@@ -12,9 +12,9 @@ public struct UserSettings: Equatable, Sendable {
     public var defaultThresholds = PullbackThresholds.standard
     /// Whether an alert's notification plays a sound. On by default.
     public var notificationSound = true
-    /// Whether the menu bar shows a chart of the day next to its text. On by default; off for a
-    /// narrower menu bar.
-    public var showsChartInMenuBar = true
+    /// How often the menu bar moves on to the next symbol, in seconds (`MenuBarCycle`), or `nil`
+    /// to show only the menu-bar symbol. Every 5 seconds by default.
+    public var menuBarCycle: TimeInterval? = MenuBarCycle.standardInterval
     /// How often the quote monitor updates in regular hours.
     public var monitorSettings = MonitorSettings.standard
     /// How the alert engine judges quotes. Only the staleness tolerance is the user's
@@ -37,18 +37,27 @@ public struct UserSettings: Equatable, Sendable {
 
 extension UserSettings: Codable {
     private enum CodingKeys: String, CodingKey {
-        case watchlist, defaultThresholds, notificationSound, updateInterval, staleTolerance, showChartInMenuBar
+        case watchlist, defaultThresholds, notificationSound, updateInterval, staleTolerance, menuBarCycle
     }
 
-    // A field an older file doesn't have gets its default. Add new fields the same way. A value
-    // out of range fails the decoding, so the file is treated as corrupt.
+    // A field an older file doesn't have gets its default, and one it has that's no longer used
+    // (`showChartInMenuBar`) is ignored. Add new fields the same way. A value out of range fails
+    // the decoding, so the file is treated as corrupt.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         watchlist = try container.decodeIfPresent(Watchlist.self, forKey: .watchlist) ?? Watchlist()
         defaultThresholds = try container.decodeIfPresent(PullbackThresholds.self, forKey: .defaultThresholds)
             ?? .standard
         notificationSound = try container.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
-        showsChartInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showChartInMenuBar) ?? true
+        // In seconds, 0 for off.
+        if let cycle = try container.decodeIfPresent(TimeInterval.self, forKey: .menuBarCycle) {
+            guard cycle == 0 || MenuBarCycle.allowedIntervals.contains(cycle) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .menuBarCycle, in: container,
+                    debugDescription: "The menu bar's cycle is 0 for off, or from 1 to 60 seconds.")
+            }
+            menuBarCycle = cycle == 0 ? nil : cycle
+        }
         do {
             if let interval = try container.decodeIfPresent(TimeInterval.self, forKey: .updateInterval) {
                 monitorSettings = try MonitorSettings(interval: interval)
@@ -72,7 +81,7 @@ extension UserSettings: Codable {
         try container.encode(watchlist, forKey: .watchlist)
         try container.encode(defaultThresholds, forKey: .defaultThresholds)
         try container.encode(notificationSound, forKey: .notificationSound)
-        try container.encode(showsChartInMenuBar, forKey: .showChartInMenuBar)
+        try container.encode(menuBarCycle ?? 0, forKey: .menuBarCycle)
         try container.encode(monitorSettings.interval, forKey: .updateInterval)
         try container.encode(alertSettings.staleTolerance, forKey: .staleTolerance)
     }

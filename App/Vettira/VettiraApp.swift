@@ -33,9 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         if let snapshot = options.snapshot {
             // Renders the views offscreen, then quits: no menu-bar item, no window on screen.
-            let menuBar = MenuBarController(state: state, remembersFrames: false, inMenuBar: false)
-            self.menuBar = menuBar
-            SnapshotRenderer(state: state, button: menuBar.button, snapshot: snapshot).start()
+            SnapshotRenderer(state: state, snapshot: snapshot).start()
             return
         }
         #endif

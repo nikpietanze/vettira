@@ -51,7 +51,9 @@ CI (`.github/workflows/ci.yml`) runs the same on GitHub's macOS runners, in fork
   sell signal, an instruction, or a confirmed reversal. Thresholds are illustrative, not validated
   signals.
 - **Say what the data is.** A high the provider didn't supply as the regular-session high is the
-  "observed high". Data age is always visible; a stale, delayed, out-of-order or extended-hours
+  "observed high". Data age is always visible in the popover and the dashboard, and in the menu
+  bar's tooltip and accessibility value; the menu bar shows a stale or closed-market price dimmed,
+  never green or red, so it never looks live. A stale, delayed, out-of-order or extended-hours
   quote never fires a price alert. Never promise real-time, tick-by-tick or consolidated data.
 - **Say where the data comes from.** Quotes come from Yahoo Finance's unofficial, undocumented
   JSON endpoints and its streaming quote feed (the WebSocket its own pages get prices from), which

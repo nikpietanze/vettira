@@ -2,8 +2,9 @@ import Foundation
 import Testing
 import VettiraCore
 
-// Expected values come from the issue and the spec: the menu bar shows the selected ticker with
-// its latest price and change from the high, or its alert or stale status; the popover lists each
+// Expected values come from the issues and the spec: the menu bar shows the selected ticker with
+// its latest price only, saying its change from the high and any warning in words for the
+// tooltip and VoiceOver (MenuBarTickerTests has its colours); the popover lists each
 // symbol's price, high and whether it's observed, pullback, data age and connection health. Data
 // age is always visible, a stale quote is said to be stale (older than the 60-second tolerance),
 // and a warning is a possible reversal, not a confirmed one (AGENTS.md).
@@ -82,7 +83,7 @@ private func status(
 
 @Test func aFreshQuoteShowsThePriceAndChangeFromTheHigh() {
     let shown = status(displaySnapshot([spy(100.3)]))
-    #expect(shown.title == "SPY 100.30 \u{2212}0.20%")
+    #expect(shown.title == "SPY 100.30")
     #expect(shown.indicator == .live)
     #expect(shown.detail == "SPY 100.30 is 0.20% below its observed high of 100.50. Quote 5 s old.")
 }
@@ -90,7 +91,7 @@ private func status(
 @Test func aWarningThePriceIsStillPastShowsAsAPossibleReversal() {
     let alert = earlyWarning()
     let shown = status(displaySnapshot([spy(100.2, alert: alert)]))
-    #expect(shown.title == "SPY 100.20 \u{2212}0.30%")
+    #expect(shown.title == "SPY 100.20")
     #expect(shown.indicator == .pullback(.early))
     #expect(shown.detail.hasPrefix("Early warning: possible reversal, not confirmed. "))
 }
@@ -115,7 +116,7 @@ private func status(
 
 @Test func aStaleQuoteSaysSo() {
     let shown = status(displaySnapshot([spy(100.3, stale: true)]), now: nyTime("10:05:15"))
-    #expect(shown.title == "SPY 100.30 \u{00B7} stale")
+    #expect(shown.segments == [.init("SPY 100.30", .dimmed)])
     #expect(shown.indicator == .stale)
     #expect(shown.detail == "SPY 100.30: the quote is 5 min old, too old to alert on.")
 }
@@ -129,7 +130,7 @@ private func status(
 
 @Test func outsideRegularHoursItSaysClosed() {
     let shown = status(displaySnapshot([spy(100.3, stale: true)], market: .afterHours), now: nyTime("17:00:00"))
-    #expect(shown.title == "SPY 100.30 \u{00B7} closed")
+    #expect(shown.segments == [.init("SPY 100.30", .dimmed)])
     #expect(shown.indicator == .closed)
 }
 
@@ -145,43 +146,14 @@ private func spyWithDay(_ price: Double = 100.3, stale: Bool = false) -> SymbolS
     return state
 }
 
-@Test func theMenuBarShowsTheDaysChartAndSaysItInWords() throws {
+@Test func theMenuBarHasNoChartOrWordsWhateverTheQuoteHas() {
     let shown = status(displaySnapshot([spyWithDay()]))
-    let chart = try #require(shown.chart)
-    #expect(chart.direction == .up)
-    // The text keeps its sign; the chart adds its words to what the item says.
-    #expect(shown.title == "SPY 100.30 \u{2212}0.20%")
-    #expect(shown.accessibilityValue == "SPY 100.30 is 0.20% below its observed high of 100.50. Quote 5 s old. "
-        + "Chart of today's price for SPY, updated with each quote: up 0.30% from the previous close of 100.00.")
+    #expect(shown.title == "SPY 100.30")
+    #expect(shown.accessibilityValue == "SPY 100.30 is 0.20% below its observed high of 100.50. Quote 5 s old.")
 }
 
-@Test func aStaleOrClosedQuoteStillShowsItsChartWithTheStatusInTheText() {
-    let stale = status(displaySnapshot([spyWithDay(stale: true)]), now: nyTime("10:05:15"))
-    #expect(stale.title == "SPY 100.30 \u{00B7} stale")
-    #expect(stale.chart != nil)
-    let closed = status(displaySnapshot([spyWithDay(stale: true)], market: .afterHours), now: nyTime("17:00:00"))
-    #expect(closed.title == "SPY 100.30 \u{00B7} closed")
-    #expect(closed.chart != nil)
-}
-
-@Test func withTheChartTurnedOffTheMenuBarHasNone() {
-    var settings = UserSettings()
-    settings.watchlist = displayWatchlist(["SPY"])
-    settings.showsChartInMenuBar = false
-    let shown = MenuBarStatus(settings: settings, snapshot: displaySnapshot([spyWithDay()]), now: nyTime("10:00:20"))
-    #expect(shown.chart == nil)
-    #expect(shown.accessibilityValue == shown.detail)
-}
-
-@Test func withoutBarsThereIsNoChart() {
-    let shown = status(displaySnapshot([spy(100.3)]))
-    #expect(shown.chart == nil)
-    #expect(shown.accessibilityValue == shown.detail)
-}
-
-@Test func eachRowHasItsDaysChartWhateverTheMenuBarSetting() {
-    var settings = rowSettings(displayWatchlist(["SPY", "QQQ"], disabled: ["QQQ"]))
-    settings.showsChartInMenuBar = false
+@Test func eachRowHasItsDaysChart() {
+    let settings = rowSettings(displayWatchlist(["SPY", "QQQ"], disabled: ["QQQ"]))
     let rows = SymbolRow.rows(
         settings: settings, snapshot: displaySnapshot([spyWithDay()]), now: nyTime("10:00:20"), timeZone: newYork)
     #expect(rows[0].chart?.direction == .up)

@@ -54,10 +54,10 @@ flowchart LR
     state["<b>AppState</b><br/>@Observable, main actor,<br/>owned by the App:<br/>settings, latest snapshot,<br/>notification and login-item status"]
     delivery["<b>AlertDelivery</b><br/>asks for permission once,<br/>posts each alert"]
     center["UNUserNotificationCenter"]
-    controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus,<br/>its PriceChart"]
+    controller["<b>MenuBarController</b><br/>NSStatusItem: MenuBarStatus<br/>as coloured text"]
     popover["<b>MenuBarPopover</b><br/>in an NSPopover:<br/>SymbolRows with their PriceCharts,<br/>ConnectionHealth"]
     dashboard["<b>DashboardView</b><br/>in a window: the watchlist's table<br/>and its edits, ConnectionHealth,<br/>DiagnosticsSummary"]
-    settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection,<br/>the menu bar's chart"]
+    settingsView["<b>SettingsView</b><br/>in a window: interval, staleness,<br/>default thresholds, Test Connection,<br/>the menu bar's cycle"]
     store["<b>SettingsStore</b>"]
     provider["<b>MarketDataProvider</b>"]
     streamer["<b>QuoteStreamer</b><br/>on a QuoteStream"]
@@ -98,7 +98,9 @@ tested without a UI:
 
 | Type | What it is |
 |---|---|
-| `MenuBarStatus` | The menu bar: the menu-bar symbol (`watchlist.menuBarSymbol`), its price and change from the high (`SPY 512.30 −0.31%`), or why there's none: waiting, off, market closed, stale, or no quote. While a warning that fired this session is still passed, its icon says so, and its tooltip says "possible reversal, not confirmed". Outside regular hours it says closed, and a quote older than the staleness tolerance is stale even between polls. Next to the text, the symbol's `PriceChart`, unless Settings turned it off (`showsChartInMenuBar`), and its accessibility value is the detail and then the chart in words |
+| `MenuBarStatus` | The menu bar for one symbol: its ticker and price only (`SPY 741.12`), as segments each with a tone: the characters its last `PriceChange` changed `up` or `down`, the rest `normal`. A price outside regular hours, or older than the staleness tolerance (even between polls), is `dimmed` whatever its last change, and so is a sign there's no price (`SPY …` waiting, `SPY —` no quote, `SPY off`). Its detail says it all in words: the change from the high and its age, or why it's stale or closed, and "possible reversal, not confirmed" while a warning that fired this session is still passed; its accessibility value is the detail and then the last change ("Last change: up from 740.43.") when its colours show |
+| `PriceChange`, `PriceChanges` | Which characters of a price changed and which way: the old and new prices compared as displayed, from the left, everything from the first difference to the end changed (all of it when the number of characters changes). `PriceChanges` keeps each symbol's latest price and last change from every snapshot, so each symbol keeps its colours until its own next change, whichever symbol is showing |
+| `MenuBarCycle` | Which symbol the menu bar shows: the enabled symbols in the watchlist's order, starting at the menu-bar symbol, moving on every `menuBarCycle` seconds (off, 3, 5 or 10; 5 by default), or with it off only the menu-bar symbol. It only rotates what the monitor already has: no requests |
 | `PriceChart` | A small chart of a symbol's day, from its quote's bars and latest price: the points (`x` by time from the first price to the last, `y` from the lowest price to the highest, the previous close counted so its line always shows), broken where a bar has no price; the previous close's level; the direction, up, down, flat (0.00%) or unknown (no previous close); and the chart in words, "Chart of today's price for SPY, updated with each quote: up 0.42% from the previous close of 510.10." (the last session's, on a later day). `lines(width:height:inset:)` scales it into the image the app draws |
 | `SymbolRow` | A watchlist symbol in the popover and the dashboard, pinned first: price, its day's `PriceChart` (the popover draws it), high and whether it's the session or the observed high, change from the high, the quote's own time and its data age, why its data can't alert (off, waiting, unknown symbol, market closed, stale, unconfirmed jump), its thresholds and whether they're its own, and the last warning this session; and whether a search finds it. Clicking one in the popover shows it in the menu bar |
 | `ConnectionHealth` | Waiting, connected ("Connected, prices streaming" while the stream is live), outside regular hours, or failing with the provider error's message and next step; when data last came and when the next update is |
@@ -109,20 +111,28 @@ tested without a UI:
 
 The menu-bar item's accessibility label (its description) is always "Vettira", whatever it
 shows, so VoiceOver names it and UI scripts can find it, and its accessibility value is the status
-in full, the chart's words included, which changes with it; the tooltip says the same. Its
-accessibility title stays the text it shows (the ticker and price): macOS reports a status item's
-title from its button's text.
+in full, the last change's direction included, which changes with it; the tooltip says the same.
+Its accessibility title stays the text it shows (the ticker and price): macOS reports a status
+item's title from its button's text.
 
-**The chart.** The button's image is the status icon and then, while the chart is on, the
-`PriceChart`, about 40 by 16 points (`PriceChartImage`, `App/Vettira/`), and each popover row
-draws the same chart before its price. The line is system green when the price is up on the day
+**The ticker.** The button shows only text, `MenuBarStatus`'s segments as an attributed title in
+the menu bar's font with digits all the same width: `normal` in the label colour, `up` system
+green, `down` system red, `dimmed` the secondary label colour, all dynamic, so they follow a light
+or dark menu bar and the highlighted button. With an empty watchlist it shows the app's chart
+icon, so there's still an item to click. `AppState` records each snapshot in its `PriceChanges`
+and keeps the symbol shown last; a task moves it on with `MenuBarCycle.next` every `menuBarCycle`
+seconds, and picking a symbol in the popover or the dashboard shows it straight away, for a
+whole turn, even one that's turned off (`SPY off`); the next turn goes on from there.
+
+**The chart.** Each popover row draws the symbol's `PriceChart`, about 40 by 16 points
+(`PriceChartImage`, `App/Vettira/`), before its price. The line is system green when the price is up on the day
 (above the previous close) and system red when it's down, with the previous close as a faint
 dotted line; green and red say up or down on the day, never buy or sell, and the line's place
 against the dotted one and the words in the accessibility value and tooltip say it without colour.
 The images draw each time they're shown, with the system's dynamic colours, so they follow a light
-or dark menu bar, popover and highlighted button. It's today's price, updated with each quote: the bars
+or dark popover. It's today's price, updated with each quote: the bars
 come with each polled quote and each poll replaces them, and the line ends at the latest price,
-polled or streamed; the text still shows the data's age or that it's stale or closed.
+polled or streamed; the row still shows the data's age or that it's stale or closed.
 
 **Notifications.** `AlertDelivery` (`Sources/VettiraCore/Notifications/`) posts each alert
 through `UNUserNotificationCenter`, with a sound unless the user turned it off (**Alert sound**
@@ -148,8 +158,8 @@ thresholds or put it back on the defaults, pick the menu bar's symbol, and remov
 table are the connection's health and its diagnostics.
 
 **Settings** (`SettingsView`) has the update interval and the staleness tolerance, the default
-thresholds, where quotes come from with Yahoo's terms, **Test Connection**, **Show chart in menu
-bar** (on by default), and the alert sound and Launch at Login switches. Thresholds are typed as percents and checked together
+thresholds, where quotes come from with Yahoo's terms, **Test Connection**, **Cycle symbols**
+(how often the menu bar moves on: off, 3, 5 or 10 s, 5 by default), and the alert sound and Launch at Login switches. Thresholds are typed as percents and checked together
 (`PullbackThresholds(early:strong:)` from text), saying why when they're refused. Test Connection
 asks the monitor's own provider for one quote for the menu-bar symbol (SPY while the watchlist is
 empty), so its request waits behind any of the monitor's and keeps to the same pacing; it's
@@ -180,8 +190,8 @@ which the user's own Vettira shares, so a check's windows open at their first si
 (`LaunchOptions.Snapshot`): it puts no item in the menu bar and no window on screen, and
 `SnapshotRenderer` (`App/Vettira/SnapshotRenderer.swift`), once every symbol has had its stronger
 warning (`isDue`, at most three minutes) or `--snapshot-after <seconds>`
-(`VETTIRA_SNAPSHOT_AFTER`) after launch, draws the menu-bar button `MenuBarController` keeps up
-to date offscreen, the popover, the dashboard and Settings, the real views on the app's own
+(`VETTIRA_SNAPSHOT_AFTER`) after launch, draws the menu-bar item as it shows each symbol in its
+cycle, one under another, with `MenuBarController`'s own title, then the popover, the dashboard and Settings, the real views on the app's own
 state, in light and dark, into PNG files in that directory, from windows that are never put on
 screen, then quits. Release builds ignore them all (`LaunchOptions.launch`, `debugBuild`).
 
@@ -192,7 +202,7 @@ another next to it, as [PRIVACY.md](../PRIVACY.md) promises.
 
 ```mermaid
 flowchart LR
-    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound; menu-bar chart"]
+    settings["<b>UserSettings</b><br/>the watchlist: symbols, order,<br/>pinned, enabled, own thresholds,<br/>menu-bar symbol; default thresholds;<br/>update interval; staleness tolerance;<br/>notification sound; menu-bar cycle"]
     store["<b>SettingsStore</b><br/>JSON, written whole"]
     settings --> store --> file[("~/Library/Application Support/<br/>Vettira/settings.json")]
     engine["<b>ReversalAlertEngine.State</b><br/>per symbol: the high, the last<br/>quote's time and price, which<br/>thresholds fired and when"]
@@ -203,17 +213,19 @@ flowchart LR
 `UserSettings` (`Sources/VettiraCore/Storage/`) holds the `Watchlist` and the default
 `PullbackThresholds`; `SettingsStore` saves it as JSON in
 `~/Library/Application Support/Vettira/settings.json`, replacing the file whole on each save. It
-also holds whether notifications play a sound, whether the menu bar shows its chart
-(`showChartInMenuBar`), the update interval (`MonitorSettings`, saved as
+also holds whether notifications play a sound, how often the menu bar cycles (`menuBarCycle`, in
+seconds, 0 for off), the update interval (`MonitorSettings`, saved as
 `updateInterval` in seconds) and the alert engine's settings, of which only the staleness
 tolerance is the user's and saved (`staleTolerance`, in seconds; the rest are the standard ones).
 Input is checked where it comes in, into types that can't hold a bad value: a `TickerSymbol` is
 trimmed, uppercased, 1 to 15 of `A-Z 0-9 . - ^ =`; thresholds are each between 0 and 100
 percent, early below strong; the watchlist has each symbol once, and its menu-bar symbol is on
-it; the update interval is from 10 seconds to an hour, and the staleness tolerance more than 0. Decoding goes through the same checks, so a file that breaks them is corrupt: the store moves
+it; the update interval is from 10 seconds to an hour, the menu bar's cycle off or from 1 to 60
+seconds, and the staleness tolerance more than 0. Decoding goes through the same checks, so a file that breaks them is corrupt: the store moves
 it to `settings.corrupt.json` and starts from the defaults (an empty watchlist, 0.25% and
 0.40%, a 15-second interval and a 60-second tolerance). A field an older file lacks gets its default, so a new setting is added with
-`decodeIfPresent` and a default.
+`decodeIfPresent` and a default, and one it has that's no longer used (`showChartInMenuBar`, from
+before the menu bar was a ticker) is ignored.
 
 `AlertStateStore` saves the alert engine's state as JSON in `alert-state.json`, next to the
 settings, in a format with a `version` (1), replacing the file whole on each save. It's a cache of

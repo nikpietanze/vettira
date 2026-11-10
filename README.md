@@ -17,7 +17,7 @@ menu bar and notifies you when a price falls from its session high by a threshol
 > built. [Install a release](#install), or [build it](#build-and-run) with Xcode.
 
 <p align="center">
-  <img src="docs/assets/menu-bar.png" alt="Vettira's menu-bar item: its icon, a small chart of SPY's price today above the dotted line of the previous close, and SPY's price and change from its high" width="201">
+  <img src="docs/assets/menu-bar.png" alt="Vettira's menu-bar item as it takes turns through three symbols, one under another: QQQ 342.66 with its last two digits green as it rose; SPY 351.47 and DIA 305.54 with the digits from the first one that changed red as they fell" width="98">
 </p>
 
 <p align="center">
@@ -29,10 +29,10 @@ menu bar and notifies you when a price falls from its session high by a threshol
 </p>
 
 <p align="center">
-  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and the switch for the chart in the menu bar, down to the end of its menu-bar section" width="420">
+  <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and how often the menu bar takes turns through the symbols, down to the end of its menu-bar section" width="420">
 </p>
 
-<p align="center"><sub>The menu-bar item with today's chart, its popover, the dashboard and
+<p align="center"><sub>The menu-bar item as it takes turns through three symbols, its popover, the dashboard and
 Settings, from a demo run: the prices are made up (their source reads "Demo (made-up prices)"),
 not Yahoo Finance's, and the times are New York's, the exchange's (EST).</sub></p>
 
@@ -202,10 +202,13 @@ shows, storage) on recorded and mock quotes, and never call Yahoo.
 
 ## Using it
 
-The menu bar shows one symbol's price and its change from the high, with a small chart of its
-price today, updated with each quote: green while it's above the previous close, red while it's below
-(up or down on the day, not advice; turn it off in Settings for a narrower menu bar). Click it for
-every symbol's chart, price, high, pullback and data age, the connection's health, and checkboxes for the
+The menu bar is a ticker: a symbol and its price (`SPY 741.12`), taking turns through the symbols
+you monitor every 5 seconds (3 or 10, or off to show just one, in Settings). When a price changes,
+the digits from the first one that changed are green if it rose and red if it fell (up or down,
+not advice), and stay so until its next change; a stale price, or one from a closed market, is
+dimmed. Its tooltip says the price, its change from the high, how old it is and which way it last
+moved. Taking turns only shows prices Vettira already has: it makes no extra requests. Click it for
+every symbol's chart of the day, price, high, pullback and data age, the connection's health, and checkboxes for the
 alert sound and Launch at Login. A pullback past a threshold sends
 a notification, worded as a possible reversal, never advice. Closing a window leaves Vettira
 running in the menu bar, still monitoring, until you pick **Quit Vettira**.
@@ -216,7 +219,7 @@ and last warning, then the connection's health and diagnostics. Add a symbol by 
 the list, drag rows or use the arrows to reorder it, pin symbols to the top, turn one off to stop
 updating it, give one its own thresholds, or pick the one the menu bar shows. **Settings…** (in the
 popover and the dashboard, or Cmd-, while a window is open) sets the update interval, how old a
-quote can be before it's stale, the default thresholds, whether the menu bar shows its chart, the
+quote can be before it's stale, the default thresholds, how often the menu bar takes turns, the
 alert sound and Launch at Login, and has **Test Connection**. Each
 change is saved as you make it. While one of its windows is open Vettira shows in the Dock and the
 app switcher; closing the last one takes it back to the menu bar only.

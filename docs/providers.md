@@ -45,7 +45,7 @@ connection ([Streamed prices](#streamed-prices)):
 
 | Request | What for |
 |---|---|
-| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=5m&includePrePost=false` | The symbol's latest quote, in the chart's `meta`, and the day's regular-session bars, five minutes each, for the menu bar's and the popover's chart |
+| `GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=5m&includePrePost=false` | The symbol's latest quote, in the chart's `meta`, and the day's regular-session bars, five minutes each, for the popover's chart |
 
 - **One at a time, at most one a second.** Requests go one after another, never in parallel,
   with at least a second between any two, so a watchlist of ten symbols takes about ten seconds
@@ -208,7 +208,9 @@ Each symbol starts at its own base price, from 100 to 499 and the same on every 
 one step per poll through a fixed path, in percent above the base: 0, 0.10, 0.20, 0.30, 0.15,
 0.00, −0.15, −0.10, then it holds at −0.10. Its high, the observed one, is 0.30% above the base,
 so with the default thresholds the sixth poll is 0.30% below it (an early warning), the seventh
-0.45% (a stronger warning), and nothing alerts after that. Each quote is timestamped at the
+0.45% (a stronger warning), and nothing alerts after that. Every other symbol (the symbol decides,
+`DemoProvider.path(for:)`) skips the 0.15 step, so it warns a poll earlier and on the seventh
+poll is rising again while the others fall: the menu bar shows prices both rising and falling. Each quote is timestamped at the
 monitor's clock, in the regular session, with no session high. The app moves the monitor's clock
 into the regular session (`DemoProvider.regularHoursOffset`), to 30 minutes after the open of
 the session the moment belongs to, so the demo alerts at any time of day. It polls at the update
@@ -221,5 +223,5 @@ above it (the symbol decides which, so a watchlist shows days both up and down),
 bar from the open of the moment's session up to that moment, wandering from below the base price
 to the quote's own price. Each bar's high is the higher of its close and the one before, so no
 bar's high is above the prices the quotes reach: the bars count in the observed high
-([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come on the sixth and
-seventh poll. Outside the regular session it has no bars.
+([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come when the
+path says. Outside the regular session it has no bars.

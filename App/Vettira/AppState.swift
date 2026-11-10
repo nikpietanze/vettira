@@ -27,6 +27,12 @@ final class AppState {
     private(set) var launchAtLoginProblem: String?
     /// Settings' Test Connection: not run yet, running, or what it found.
     private(set) var connectionTest: ConnectionTest = .notRun
+    /// The symbol the menu bar showed last, as it cycles (`MenuBarCycle`).
+    private var shownSymbol: TickerSymbol?
+    /// When `shownSymbol`'s turn started, so each turn, a picked symbol's too, lasts the interval.
+    @ObservationIgnored private var shownSince = Date()
+    /// Each symbol's last price change, from every snapshot, for the menu bar's colours.
+    private var priceChanges = PriceChanges()
 
     enum LaunchAtLogin {
         case off, on
@@ -128,8 +134,14 @@ final class AppState {
 
     // MARK: What the views show
 
+    /// What the menu bar shows now: the symbol its cycle is on.
     var menuBar: MenuBarStatus {
-        MenuBarStatus(settings: settings, snapshot: snapshot, now: now)
+        menuBar(showing: MenuBarCycle.current(shownSymbol, settings: settings))
+    }
+
+    /// What the menu bar shows when it's `symbol`'s turn.
+    func menuBar(showing symbol: TickerSymbol?) -> MenuBarStatus {
+        MenuBarStatus(settings: settings, snapshot: snapshot, now: now, showing: symbol, changes: priceChanges)
     }
 
     /// The watchlist's rows at the Mac's time `date`, for a view that redraws every second.
@@ -190,8 +202,11 @@ final class AppState {
         change { try $0.watchlist.setEnabled(enabled, for: symbol) }
     }
 
+    /// Makes it the menu-bar symbol, shown straight away; a cycle goes on from it.
     func showInMenuBar(_ symbol: TickerSymbol) {
         change { try $0.watchlist.showInMenuBar(symbol) }
+        shownSymbol = symbol
+        shownSince = Date()
     }
 
     /// Gives the symbol its own thresholds, from what the user typed. Returns why it can't.
@@ -237,8 +252,9 @@ final class AppState {
         change { $0.notificationSound = on }
     }
 
-    func setShowsChartInMenuBar(_ on: Bool) {
-        change { $0.showsChartInMenuBar = on }
+    /// How often the menu bar moves on to the next symbol, or `nil` for only the menu-bar symbol.
+    func setMenuBarCycle(_ seconds: TimeInterval?) {
+        change { $0.menuBarCycle = seconds }
     }
 
     /// Registers or unregisters Vettira as a login item. Off until the user turns it on.
@@ -328,6 +344,16 @@ final class AppState {
                 self?.tick()
             }
         }
+        // The menu bar's turns: only what's shown changes, so no request is made.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                // Until the shown symbol's turn ends; off, it looks again each second, so turning
+                // it on starts the cycle soon after.
+                let wait = self?.untilNextTurn ?? 1
+                try? await Task.sleep(for: .seconds(max(0.1, wait)))
+                self?.cycleMenuBar()
+            }
+        }
         Task { [weak self] in
             await self?.prepareNotifications()
         }
@@ -341,7 +367,22 @@ final class AppState {
             log.notice("Stream: \(String(describing: stream), privacy: .public)")
         }
         self.snapshot = snapshot
+        priceChanges.record(snapshot)
         now = Date() + clockOffset
+        menuBarChanged(from: before)
+    }
+
+    private var untilNextTurn: TimeInterval {
+        MenuBarCycle.untilNextTurn(shownFor: Date().timeIntervalSince(shownSince), settings: settings) ?? 1
+    }
+
+    /// Moves the menu bar on when the shown symbol's turn is over; a symbol picked meanwhile
+    /// started a new turn, which the loop waits out first.
+    private func cycleMenuBar() {
+        guard settings.menuBarCycle != nil, untilNextTurn <= 0.05 else { return }
+        let before = menuBar.title
+        shownSymbol = MenuBarCycle.next(after: shownSymbol, settings: settings)
+        shownSince = Date()
         menuBarChanged(from: before)
     }
 

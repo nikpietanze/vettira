@@ -12,14 +12,11 @@ import VettiraCore
 @MainActor
 final class SnapshotRenderer {
     private let state: AppState
-    /// The menu-bar item's button, kept up to date by `MenuBarController` but never on screen.
-    private let button: NSButton
     private let snapshot: LaunchOptions.Snapshot
     private let log = Logger(subsystem: "com.andiamosoftware.vettira", category: "snapshot")
 
-    init(state: AppState, button: NSButton, snapshot: LaunchOptions.Snapshot) {
+    init(state: AppState, snapshot: LaunchOptions.Snapshot) {
         self.state = state
-        self.button = button
         self.snapshot = snapshot
     }
 
@@ -32,8 +29,6 @@ final class SnapshotRenderer {
             while !snapshot.isDue(state.snapshot, elapsed: Date().timeIntervalSince(started)) {
                 try? await Task.sleep(for: .seconds(1))
             }
-            // So the menu-bar button has taken the latest state, which it does on the next turn.
-            try? await Task.sleep(for: .milliseconds(500))
             let written = await render()
             exit(written ? 0 : 1)
         }
@@ -79,17 +74,27 @@ final class SnapshotRenderer {
         ]
     }
 
-    /// A copy of the menu-bar button, as it's showing now, with the menu bar's height around it.
+    /// The menu-bar item as it shows each symbol in its cycle, top to bottom in the cycle's
+    /// order, each in a strip the menu bar's height, drawn as `MenuBarController` draws it.
     private func menuBar() -> NSView {
-        let copy = NSButton(title: button.title, image: button.image ?? NSImage(), target: nil, action: nil)
-        copy.isBordered = false
-        copy.font = button.font
-        copy.imagePosition = button.imagePosition
-        copy.sizeToFit()
-        let height = max(NSStatusBar.system.thickness, copy.frame.height)
-        let strip = NSView(frame: NSRect(x: 0, y: 0, width: copy.frame.width + 16, height: height))
-        copy.frame.origin = NSPoint(x: 8, y: (height - copy.frame.height) / 2)
-        strip.addSubview(copy)
+        let symbols = MenuBarCycle.symbols(state.settings)
+        let statuses = symbols.isEmpty ? [state.menuBar] : symbols.map { state.menuBar(showing: $0) }
+        let items = statuses.map { status in
+            let item = NSButton(title: "", target: nil, action: nil)
+            item.isBordered = false
+            item.image = MenuBarController.image(status)
+            item.attributedTitle = MenuBarController.title(status)
+            item.sizeToFit()
+            return item
+        }
+        let height = max(NSStatusBar.system.thickness, items.map(\.frame.height).max() ?? 0)
+        let width = (items.map(\.frame.width).max() ?? 0) + 16
+        let strip = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height * CGFloat(items.count)))
+        for (index, item) in items.enumerated() {
+            let row = CGFloat(items.count - 1 - index)
+            item.frame.origin = NSPoint(x: 8, y: row * height + (height - item.frame.height) / 2)
+            strip.addSubview(item)
+        }
         return strip
     }
 
