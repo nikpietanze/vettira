@@ -1,7 +1,7 @@
 import Foundation
 
 /// The symbol chart's maths, for one timeframe: where each price goes, the price range to show,
-/// the period's change and its direction, the time labels along the bottom, and what the
+/// which way the line goes, the period's change, the time labels along the bottom, and what the
 /// crosshair says at each point. The app only draws what it gives.
 ///
 /// 1D spreads its bars by time over the whole session, so a day still trading leaves the rest of
@@ -51,11 +51,18 @@ public struct SymbolChart: Equatable, Sendable {
     /// What the period's change is measured from: the close before its first bar (the previous
     /// close, on 1D), or its first price when the provider gave none.
     public let reference: Double
+    /// The period's first price: its first bar's open (today's open, on 1D), or its close without
+    /// one.
+    public let open: Double
     /// The last price: the latest quote's, when it's newer than the bars.
     public let last: Double
+    /// Which way the line goes, from `open` to `last`: the line's colour.
     public let direction: PriceChart.Direction
     /// The change over the period, with when: `+2.22 (+0.30%) today`, `+81.72 (+12.18%) past year`.
     public let change: String
+    /// Which way `change` is, from `reference` to `last`: its colour, which can differ from the
+    /// line's after a gap at the open.
+    public let changeDirection: PriceChart.Direction
     /// The period's highest and lowest prices.
     public let high: Double
     public let low: Double
@@ -113,8 +120,8 @@ public struct SymbolChart: Equatable, Sendable {
         high = bars.compactMap { $0.high ?? $0.close }.max() ?? prices.max()!
         low = bars.compactMap { $0.low ?? $0.close }.min() ?? prices.min()!
         last = prices[prices.count - 1]
-        let firstPrice = bars[0].open ?? prices[0]
-        reference = history.previousClose ?? (timeframe == .oneDay ? latest?.previousClose : nil) ?? firstPrice
+        open = bars[0].open ?? prices[0]
+        reference = history.previousClose ?? (timeframe == .oneDay ? latest?.previousClose : nil) ?? open
         previousCloseLine = timeframe == .oneDay ? history.previousClose ?? latest?.previousClose : nil
 
         // The line's prices, the dotted line's too, with a tenth of the range above and below.
@@ -123,9 +130,9 @@ public struct SymbolChart: Equatable, Sendable {
         let room = max((highest - lowest) * 0.1, highest * 0.001)
         priceDomain = (lowest - room)...(highest + room)
 
+        direction = PriceChart.Direction(from: open, to: last)
+        changeDirection = PriceChart.Direction(from: reference, to: last)
         let difference = last - reference
-        let percent = reference != 0 ? difference / reference * 100 : 0
-        direction = (percent * 100).rounded() == 0 ? .flat : difference > 0 ? .up : .down
         let when: String
         if timeframe == .oneDay {
             let day = MarketCalendar.day(of: bars[0].timestamp)
@@ -136,13 +143,10 @@ public struct SymbolChart: Equatable, Sendable {
         change = "\(DisplayFormat.change(difference, from: reference)) \(when)"
         ticks = Self.ticks(timeframe, bars: bars, x: x, session: session)
 
-        let movement = switch direction {
-        case .up: "up \(DisplayFormat.percent(abs(percent)))"
-        case .down: "down \(DisplayFormat.percent(abs(percent)))"
-        case .flat, .unknown: "unchanged"
-        }
+        let since = timeframe == .oneDay ? "since the open of" : "since its first price,"
         description = "Chart of \(history.symbol), \(timeframe == .oneDay ? when : timeframe.period.lowercased()): "
-            + "\(movement) from \(DisplayFormat.price(reference)) to \(DisplayFormat.price(last)). "
+            + "\(DisplayFormat.movement(from: reference, to: last)) from \(DisplayFormat.price(reference)) to \(DisplayFormat.price(last)), "
+            + "\(DisplayFormat.movement(from: open, to: last)) \(since) \(DisplayFormat.price(open)). "
             + "High \(DisplayFormat.price(high)), low \(DisplayFormat.price(low))."
     }
 
@@ -153,14 +157,12 @@ public struct SymbolChart: Equatable, Sendable {
 
     /// What the crosshair says at `point`.
     public func readout(_ point: Point) -> Readout {
-        let difference = point.price - reference
-        let percent = reference != 0 ? difference / reference * 100 : 0
-        let direction: PriceChart.Direction = (percent * 100).rounded() == 0 ? .flat : difference > 0 ? .up : .down
+        let percent = reference != 0 ? (point.price - reference) / reference * 100 : 0
         return Readout(
             time: Self.time(of: point.bar.timestamp, timeframe),
             price: DisplayFormat.price(point.price),
             change: DisplayFormat.signedPercent(percent),
-            direction: direction,
+            direction: PriceChart.Direction(from: reference, to: point.price),
             volume: point.bar.volume.map { "Vol \(DisplayFormat.volume($0))" })
     }
 

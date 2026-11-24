@@ -128,7 +128,8 @@ import VettiraCore
         // The next morning, before the open.
         let chart = try #require(PriceChart(quote: quote, now: YahooFixtures.quoteTime + 14 * 3600))
         #expect(chart.direction == .up)
-        #expect(chart.description == "Chart of the last session's price for SPY: up 2.37% from the previous close of 735.29.")
+        #expect(chart.description
+            == "Chart of the last session's price for SPY: up 1.25% since the open of 743.37, up 2.37% from the previous close of 735.29.")
         #expect(chart.segments.count == 1)
         #expect(chart.segments[0].count == 79)
     }

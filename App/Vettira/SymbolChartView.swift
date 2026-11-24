@@ -42,7 +42,7 @@ struct SymbolChartView: View {
         let chart = history.flatMap { SymbolChart(history: $0, latest: quote, now: state.now) }
         let tint = Color.direction(chart?.direction)
         VStack(alignment: .leading, spacing: 10) {
-            header(quote: quote, history: history, chart: chart, tint: tint)
+            header(quote: quote, history: history, chart: chart)
             Group {
                 if let chart {
                     AreaChart(chart: chart, hoverX: $hoverX)
@@ -88,7 +88,7 @@ struct SymbolChartView: View {
 
     private var isOpen: Bool { state.openWindows.contains(Self.windowID(symbol)) }
 
-    private func header(quote: Quote?, history: PriceHistory?, chart: SymbolChart?, tint: Color) -> some View {
+    private func header(quote: Quote?, history: PriceHistory?, chart: SymbolChart?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(symbol.rawValue).font(.system(size: 13, weight: .semibold))
@@ -111,7 +111,7 @@ struct SymbolChartView: View {
                 if let chart {
                     Text(chart.change)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(tint)
+                        .foregroundStyle(Color.direction(chart.changeDirection))
                 }
             }
             .monospacedDigit()
@@ -148,10 +148,6 @@ struct SymbolChartView: View {
     }
 }
 
-/// The price as straight lines from one real bar's close to the next, never smoothed, so it never
-/// shows a price that didn't trade, over a fill that fades down, green when the period is up and red
-/// when it's down; on 1D the previous close as a dotted line. Hovering shows a crosshair and a
-/// tooltip with the time, price, change and volume of the nearest real bar.
 private struct AreaChart: View {
     let chart: SymbolChart
     @Binding var hoverX: Double?
@@ -335,13 +331,11 @@ private struct StatsGrid: View {
 }
 
 extension Color {
-    /// System green for up, system red for down, the secondary colour otherwise: up or down over
-    /// the period, never buy or sell.
     static func direction(_ direction: PriceChart.Direction?) -> Color {
         switch direction {
         case .up: Color(nsColor: .systemGreen)
         case .down: Color(nsColor: .systemRed)
-        case .flat, .unknown, nil: .secondary
+        case .flat, nil: .secondary
         }
     }
 }

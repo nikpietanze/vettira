@@ -19,6 +19,17 @@ public enum DisplayFormat {
         String(format: "%.2f%%", percent)
     }
 
+    /// A move in words, for VoiceOver and tooltips: `up 0.42%`, `down 1.01%`, or `unchanged` when
+    /// it reads as 0.00%.
+    public static func movement(from reference: Double, to price: Double) -> String {
+        let percent = reference != 0 ? percent(abs(price - reference) / reference * 100) : percent(0)
+        return switch PriceChart.Direction(from: reference, to: price) {
+        case .up: "up \(percent)"
+        case .down: "down \(percent)"
+        case .flat: "unchanged"
+        }
+    }
+
     /// A change with its sign, and the percent it is of `from`: `+2.22 (+0.30%)`, `−1.05 (−0.14%)`,
     /// or `0.00 (0.00%)` when either rounds to nothing. The minus is a real minus sign.
     public static func change(_ change: Double, from: Double) -> String {

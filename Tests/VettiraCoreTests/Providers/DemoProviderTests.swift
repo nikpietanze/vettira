@@ -29,8 +29,14 @@ import VettiraCore
         let last = try #require(quote.intraday.last?.close)
         #expect(abs(last - quote.price) / quote.price * 100 < 0.05)
     }
-    // One symbol's day is up and the other's down, so the demo shows both colours.
-    let directions = Set(batch.quotes.compactMap { PriceChart(quote: $0, now: now)?.direction })
+}
+
+@Test func oneSymbolsLineIsUpSinceTheOpenAndTheOthersDownOnceItFalls() async throws {
+    let now = nyTime("10:02:00")
+    let provider = DemoProvider(now: { now })
+    for _ in 0..<5 { _ = try await provider.quotes(for: ["SPY", "QQQ"]) }
+    let batch = try await provider.quotes(for: ["SPY", "QQQ"])
+    let directions = batch.quotes.map { PriceChart(quote: $0, now: now)?.direction }
     #expect(directions == [.up, .down])
 }
 

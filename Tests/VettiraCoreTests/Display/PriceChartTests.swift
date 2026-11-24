@@ -2,17 +2,10 @@ import Foundation
 import Testing
 import VettiraCore
 
-// Expected values come from the issue: a small line chart of the day, its line green when the
-// price is above the previous close and red when below, with a faint previous-close line; gaps in
-// the provider's bars are gaps; the chart's words say "today's price, updated with each quote", never
-// live, and say up or down on the day, never buy or sell. Tuesday 10 November 2026 is a trading day.
-
-private func bar(_ time: String, _ close: Double?) -> PriceBar {
-    PriceBar(timestamp: nyTime(time), close: close, high: close.map { $0 + 0.05 })
+private func bar(_ time: String, _ close: Double?, open: Double? = nil) -> PriceBar {
+    PriceBar(timestamp: nyTime(time), close: close, high: close.map { $0 + 0.05 }, open: open)
 }
 
-/// SPY's day: 100 at 09:30, 101 at 09:35, nothing at 09:40, 102 at 09:45, and the quote at 101
-/// at 09:50, with the previous close at 99.
 private func day(
     price: Double = 101, at time: String = "09:50:00", previousClose: Double? = 99,
     bars: [PriceBar] = [bar("09:30:00", 100), bar("09:35:00", 101), bar("09:40:00", nil), bar("09:45:00", 102)]
@@ -41,32 +34,47 @@ private func chart(_ quote: Quote, now: Date = nyTime("09:50:05")) -> PriceChart
     #expect(above.segments.flatMap { $0 }.allSatisfy { (0...1).contains($0.y) })
 }
 
-@Test func upOnTheDayIsUpAndSaysSoWithTodaysPriceUpdatedWithEachQuote() throws {
+@Test func upSinceTheOpenIsUpAndSaysSoWithTodaysPriceUpdatedWithEachQuote() throws {
     let chart = try #require(chart(day()))
     #expect(chart.direction == .up)
-    #expect(chart.description
-        == "Chart of today's price for SPY, updated with each quote: up 2.02% from the previous close of 99.00.")
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote: "
+        + "up 1.00% since the open of 100.00, up 2.02% from the previous close of 99.00.")
 }
 
-@Test func downOnTheDayIsDown() throws {
+@Test func downSinceTheOpenIsDown() throws {
     let chart = try #require(chart(day(price: 98)))
     #expect(chart.direction == .down)
-    #expect(chart.description
-        == "Chart of today's price for SPY, updated with each quote: down 1.01% from the previous close of 99.00.")
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote: "
+        + "down 2.00% since the open of 100.00, down 1.01% from the previous close of 99.00.")
 }
 
-@Test func withinHalfAHundredthOfAPercentIsUnchanged() throws {
-    let chart = try #require(chart(day(price: 99.004)))
+@Test func aDayThatGappedDownAndClimbedSinceIsUp() throws {
+    let chart = try #require(chart(day(
+        price: 719.56, previousClose: 722.29,
+        bars: [bar("09:30:00", 714.55, open: 714.24), bar("09:35:00", 717.57), bar("09:40:00", 719.80)])))
+    #expect(chart.direction == .up)
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote: "
+        + "up 0.74% since the open of 714.24, down 0.38% from the previous close of 722.29.")
+}
+
+@Test func aDayThatGappedUpAndFellSinceIsDown() throws {
+    let chart = try #require(chart(day(
+        price: 101, previousClose: 99, bars: [bar("09:30:00", 102.5, open: 103), bar("09:35:00", 102)])))
+    #expect(chart.direction == .down)
+}
+
+@Test func withinHalfAHundredthOfAPercentOfTheOpenIsUnchanged() throws {
+    let chart = try #require(chart(day(price: 100.004)))
     #expect(chart.direction == .flat)
-    #expect(chart.description
-        == "Chart of today's price for SPY, updated with each quote: unchanged from the previous close of 99.00.")
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote: "
+        + "unchanged since the open of 100.00, up 1.01% from the previous close of 99.00.")
 }
 
-@Test func withoutAPreviousCloseThereIsNoDirectionOrLine() throws {
+@Test func withoutAPreviousCloseTheresNoLineForItAndTheDirectionIsStillTheOpens() throws {
     let chart = try #require(chart(day(previousClose: nil)))
-    #expect(chart.direction == .unknown)
+    #expect(chart.direction == .up)
     #expect(chart.previousCloseLevel == nil)
-    #expect(chart.description == "Chart of today's price for SPY, updated with each quote.")
+    #expect(chart.description == "Chart of today's price for SPY, updated with each quote: up 1.00% since the open of 100.00.")
 }
 
 @Test(arguments: [
@@ -76,7 +84,8 @@ private func chart(_ quote: Quote, now: Date = nyTime("09:50:05")) -> PriceChart
 ])
 func onALaterDayItsTheLastSessions(now: Date) throws {
     let chart = try #require(chart(day(), now: now))
-    #expect(chart.description == "Chart of the last session's price for SPY: up 2.02% from the previous close of 99.00.")
+    #expect(chart.description
+        == "Chart of the last session's price for SPY: up 1.00% since the open of 100.00, up 2.02% from the previous close of 99.00.")
 }
 
 @Test func afterTheCloseTheSameDayItsStillToday() throws {

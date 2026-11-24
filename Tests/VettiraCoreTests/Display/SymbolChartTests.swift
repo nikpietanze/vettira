@@ -32,12 +32,15 @@ func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
         let chart = try #require(SymbolChart(history: try await recordedHistory(.oneDay), latest: nil, now: nextMorning))
         #expect(chart.reference == 735.29)
         #expect(chart.previousCloseLine == 735.29)
-        #expect(chart.direction == .up)
+        #expect(chart.changeDirection == .up)
         // 752.69 − 735.29 = 17.40, 2.37% of 735.29. The next morning, it's the last session's.
         #expect(chart.change == "+17.40 (+2.37%) on Mon 9 Nov")
         #expect(chart.priceDomain.contains(735.29))
         #expect(chart.points.allSatisfy { chart.priceDomain.contains($0.price) })
-        #expect(chart.description == "Chart of SPY, on Mon 9 Nov: up 2.37% from 735.29 to 752.69. High 755.42, low 741.03.")
+        #expect(DisplayFormat.price(chart.open) == "741.95")
+        #expect(chart.direction == .up)
+        #expect(chart.description == "Chart of SPY, on Mon 9 Nov: up 2.37% from 735.29 to 752.69, "
+            + "up 1.45% since the open of 741.95. High 755.42, low 741.03.")
     }
 
     @Test func oneDayDuringItsOwnSessionIsToday() async throws {
@@ -104,7 +107,9 @@ func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
         let chart = try #require(SymbolChart(history: try await recordedHistory(.oneMonth), latest: nil, now: nextMorning))
         #expect(chart.ticks.map(\.label) == ["12 Oct", "19 Oct", "26 Oct", "2 Nov", "9 Nov"])
         #expect(chart.direction == .down)
+        #expect(chart.changeDirection == .down)
         #expect(chart.change.hasPrefix("\u{2212}"))
+        #expect(chart.description.contains("down 3.35% since its first price, 778.78."))
     }
 
     @Test func fiveYearsIsLabelledByYearWithWeeklyReadouts() async throws {
@@ -169,7 +174,25 @@ func recordedHistory(_ timeframe: ChartTimeframe) async throws -> PriceHistory {
         let chart = try #require(SymbolChart(history: history, latest: nil, now: open))
         #expect(chart.reference == 104)
         #expect(chart.direction == .down)
+        #expect(chart.changeDirection == .down)
         #expect(chart.change == "\u{2212}6.00 (\u{2212}5.77%) past 6 months")
+    }
+
+    @Test func aDayThatGappedDownAndClimbedSinceHasAnUpLineAndAChangeThatsDown() throws {
+        var history = PriceHistory(symbol: "SPY", timeframe: .oneDay, bars: bars([714.55, 717.57, 719.56]), previousClose: 722.29)
+        history.bars[0].open = 714.24
+        let chart = try #require(SymbolChart(history: history, latest: nil, now: open + 600))
+        #expect(chart.direction == .up)
+        #expect(chart.changeDirection == .down)
+        #expect(chart.change == "\u{2212}2.73 (\u{2212}0.38%) today")
+    }
+
+    @Test func aLongerTimeframeIsColouredFromItsFirstPriceNotTheCloseBeforeIt() throws {
+        var history = PriceHistory(symbol: "SPY", timeframe: .oneYear, bars: bars([108, 105], every: 86_400), previousClose: 90)
+        history.bars[0].open = 110
+        let chart = try #require(SymbolChart(history: history, latest: nil, now: open))
+        #expect(chart.direction == .down)
+        #expect(chart.changeDirection == .up)
     }
 
     @Test func noPricesNoChart() {

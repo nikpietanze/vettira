@@ -1,10 +1,6 @@
 import AppKit
 import VettiraCore
 
-/// Draws a `PriceChart` for a popover row: its lines in system green when the price is up on the day and red when
-/// it's down, the previous close as a faint dashed line. Where the points go is the chart's to
-/// say; this only strokes them. The images draw when shown, not once, so their colours follow the
-/// light or dark popover they're in.
 enum PriceChartImage {
     /// The chart's size in the popover, in points.
     static let size = NSSize(width: 40, height: 16)
@@ -34,7 +30,7 @@ enum PriceChartImage {
         let color: NSColor = switch chart.direction {
         case .up: .systemGreen
         case .down: .systemRed
-        case .flat, .unknown: .labelColor
+        case .flat: .labelColor
         }
         color.setStroke()
         color.setFill()

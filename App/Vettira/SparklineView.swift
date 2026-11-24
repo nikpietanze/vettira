@@ -1,9 +1,6 @@
 import SwiftUI
 import VettiraCore
 
-/// A dashboard row's small chart of the day: the `PriceChart`'s line in system green when the
-/// price is up on the day and red when it's down, over the previous close as a faint dotted line.
-/// The points are the chart's; this only strokes them, flipped so up is up.
 struct SparklineView: View {
     let chart: PriceChart
     static let size = CGSize(width: 64, height: 20)

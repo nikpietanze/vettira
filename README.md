@@ -209,7 +209,7 @@ the digits from the first one that changed are green if it rose and red if it fe
 not advice), and stay so until its next change; a stale price, or one from a closed market, is
 dimmed. Its tooltip says the price, its change from the high, how old it is and which way it last
 moved. Taking turns only shows prices Vettira already has: it makes no extra requests. Click it for
-every symbol's chart of the day, price, high, pullback and data age, the connection's health, and checkboxes for the
+every symbol's chart of the day (green when it's up since the open, red when it's down), price, high, pullback and data age, the connection's health, and checkboxes for the
 alert sound and Launch at Login. A pullback past a threshold sends
 a notification, worded as a possible reversal, never advice. Closing a window leaves Vettira
 running in the menu bar, still monitoring, until you pick **Quit Vettira**.
@@ -227,7 +227,8 @@ app switcher; closing the last one takes it back to the menu bar only.
 
 **A symbol's chart.** Click a symbol in the dashboard or the popover to open its chart in a window
 of its own: the price and its change over the period, green when it's up and red when it's down
-(not advice), an area chart with the previous close dotted on 1D, and timeframes from 1D to 5Y.
+(not advice), an area chart green when the price is above where the line starts (today's open, on
+1D) and red when below, so a day that opened lower and has climbed since is green, with the previous close dotted on 1D, and timeframes from 1D to 5Y.
 Hover over it for a crosshair with the time (ET), price, change and volume. Under it are the day's
 open, previous close and volume, its high and low as Yahoo gives them for the regular session,
 and Vettira's own figures: the session or observed high, the change from it and the thresholds. 1D moves with each update; a longer timeframe is one

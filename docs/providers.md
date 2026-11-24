@@ -288,10 +288,13 @@ with opens, highs, lows and volumes. Its 1D is the quote's own day, a bar a minu
 Each quote has a made-up day for the chart too: a previous close 0.60% below the base price or
 above it (the symbol decides which, so a watchlist shows days both up and down), and a random
 walk a bar a minute, the same on every run for each symbol and day, from the open of the
-moment's session up to that moment, from below the base price to the quote's own price, each bar
+moment's session up to that moment, to the quote's own price, each bar
 opening at the last one's close, with a made-up volume. The quote carries it as 5-minute bars,
 five of its minutes each, as Yahoo's updates do. A close that would go above the base price or
 the quote's price, whichever is higher, is turned back below it, and no bar's high goes above
 it, so no bar's high is above the prices the quotes reach: the bars count in the observed high
 ([alerts.md](alerts.md#the-days-bars)) but never raise it, and the warnings come when the
-path says. Outside the regular session it has no bars.
+path says. A symbol whose previous close is below the base starts its walk 0.30% below the base
+price, so its line is up since the open, green; the others start at the base price or the
+quote's price, whichever is higher, so their line is flat until the price falls, then down since
+the open, red. Outside the regular session it has no bars.

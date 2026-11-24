@@ -14,7 +14,9 @@ import Foundation
 /// Each quote also has a made-up day for the chart: a previous close 0.60% below or above the
 /// base price (the symbol decides which, so a watchlist shows days both up and down), and a
 /// random walk a bar a minute from the open up to now, the same on every run for each symbol and
-/// day, from below the base price to the quote's price (`day(_:until:endingAt:)`). The polls'
+/// day, to the quote's price (`day(_:until:endingAt:)`): from below the base price for a symbol
+/// whose previous close is below it, so its line is up since the open, and otherwise from the
+/// highest a bar may go, so its line is down since the open once its price falls. The polls'
 /// quotes carry it as 5-minute bars, five of its minutes each, as Yahoo's do; the chart's 1D is
 /// its minutes. No bar's high is above the prices the quotes reach, so the high stays the
 /// quotes' and the warnings come when the path says.
@@ -88,13 +90,6 @@ public actor DemoProvider: MarketDataProvider {
         basePrice(symbol) * (1 + (seed(symbol) % 2 == 0 ? -0.6 : 0.6) / 100)
     }
 
-    /// A bar a minute from the open of `now`'s session up to `now`: a random walk, the same on
-    /// every run for the symbol and the day, that starts 0.30% below the base price and ends on
-    /// the price `percent` above the base, the quote's. Its moves are the day's own, so the walk
-    /// up to an earlier `now` has the same shape; a bridge then pins its ends. A close that would
-    /// go above the base price or the quote's price, whichever is higher, is turned back below
-    /// it, and no bar's high goes above it either. None outside the regular session or the
-    /// calendar.
     static func day(
         _ symbol: String, until now: Date, endingAt percent: Double, calendar: MarketCalendar = .usEquities
     ) -> [PriceBar] {
@@ -104,7 +99,7 @@ public actor DemoProvider: MarketDataProvider {
         guard count > 0 else { return [] }
         let base = basePrice(symbol)
         let cap = max(0, percent)
-        let start = -0.30
+        let start = seed(symbol) % 2 == 0 ? -0.30 : cap
         var random = SeededRandom(seed: UInt64(seed(symbol)) &* 1_000_003 &+ UInt64(sessionOpen.timeIntervalSince1970 / 86_400))
         // A minute's move: about 0.04%, as a broad ETF's is.
         var walk = [0.0]

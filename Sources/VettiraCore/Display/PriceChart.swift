@@ -1,19 +1,22 @@
 import Foundation
 
 /// A small line chart of a symbol's day, for the menu bar and the popover: the day's bars and the
-/// latest price, the previous close as a faint line, and whether the price is up or down on the
-/// day. It's the price as of the latest quote, polled or streamed.
+/// latest price, the previous close as a faint line, and whether the line is up or down since the
+/// open. It's the price as of the latest quote, polled or streamed.
 ///
 /// The maths is here, so it's tested without a UI; the app only strokes the lines it gives and
-/// picks the colour its direction names: green for up on the day, red for down, never buy or sell.
+/// picks the colour its direction names: green when the line ends above where it started, red
+/// when below, never buy or sell.
 public struct PriceChart: Equatable, Sendable {
-    /// The latest price against the previous close, to two decimals of a percent.
+    /// Which way a price is from the one it's measured from, to two decimals of a percent: flat
+    /// within 0.005%, which reads as 0.00%.
     public enum Direction: Equatable, Sendable {
-        case up, down
-        /// Within 0.005% of the previous close, so it reads as 0.00%.
-        case flat
-        /// The provider didn't supply a previous close.
-        case unknown
+        case up, down, flat
+
+        public init(from reference: Double, to price: Double) {
+            let percent = reference != 0 ? (price - reference) / reference * 100 : 0
+            self = (percent * 100).rounded() == 0 ? .flat : price > reference ? .up : .down
+        }
     }
 
     /// A point on the chart, `x` and `y` each from 0 to 1, `y` up.
@@ -33,19 +36,22 @@ public struct PriceChart: Equatable, Sendable {
     public let segments: [[Point]]
     /// Where the previous close's line goes, from 0 to 1; `nil` without a previous close.
     public let previousCloseLevel: Double?
+    /// Which way the line goes, from the open (its first bar's open, or its first price) to its
+    /// last price: the line's colour.
     public let direction: Direction
     /// The chart in words, for VoiceOver and the tooltip: `Chart of today's price for SPY, updated
-    /// with each quote: up 0.42% from the previous close of 510.10.`
+    /// with each quote: up 0.74% since the open of 714.24, down 0.38% from the previous close of
+    /// 722.29.`
     public let description: String
 
     /// The chart of `quote`'s bars, ending at its price when that's newer than the last bar, at
     /// `now`. `nil` when there are fewer than two prices to draw a line through.
     public init?(quote: Quote, now: Date, calendar: MarketCalendar = .usEquities) {
-        var prices: [(time: Date, price: Double?)] = quote.intraday.map { ($0.timestamp, $0.close) }
+        var prices: [(time: Date, price: Double?, open: Double?)] = quote.intraday.map { ($0.timestamp, $0.close, $0.open) }
         guard let lastBar = quote.intraday.last else { return nil }
         let day = calendar.status(at: lastBar.timestamp)?.session.day
         if quote.timestamp > lastBar.timestamp, calendar.status(at: quote.timestamp)?.session.day == day {
-            prices.append((time: quote.timestamp, price: quote.price))
+            prices.append((time: quote.timestamp, price: quote.price, open: nil))
         }
         // From the first price to the last: a gap at either end isn't part of the line.
         guard let first = prices.firstIndex(where: { $0.price != nil }),
@@ -62,7 +68,7 @@ public struct PriceChart: Equatable, Sendable {
 
         var segments: [[Point]] = []
         var run: [Point] = []
-        for (time, price) in prices {
+        for (time, price, _) in prices {
             guard let price else {
                 segments.append(run)
                 run = []
@@ -74,24 +80,19 @@ public struct PriceChart: Equatable, Sendable {
         self.segments = segments.filter { !$0.isEmpty }
         previousCloseLevel = quote.previousClose.map(level)
 
+        let open = prices[0].open ?? prices[0].price!
+        let end = prices[prices.count - 1].price!
+        direction = Direction(from: open, to: end)
+
         // Today's when the bars are from the session of the date it is in New York.
         let what = day != nil && day == MarketCalendar.day(of: now)
             ? "today's price for \(quote.symbol), updated with each quote" : "the last session's price for \(quote.symbol)"
-        guard let previousClose = quote.previousClose else {
-            direction = .unknown
-            description = "Chart of \(what)."
-            return
+        var changes = ["\(DisplayFormat.movement(from: open, to: end)) since the open of \(DisplayFormat.price(open))"]
+        if let previousClose = quote.previousClose {
+            changes.append(
+                "\(DisplayFormat.movement(from: previousClose, to: quote.price)) from the previous close of \(DisplayFormat.price(previousClose))")
         }
-        let change = (quote.price - previousClose) / previousClose * 100
-        let close = DisplayFormat.price(previousClose)
-        if (change * 100).rounded() == 0 {
-            direction = .flat
-            description = "Chart of \(what): unchanged from the previous close of \(close)."
-        } else {
-            direction = change > 0 ? .up : .down
-            description = "Chart of \(what): \(change > 0 ? "up" : "down") \(DisplayFormat.percent(abs(change))) "
-                + "from the previous close of \(close)."
-        }
+        description = "Chart of \(what): \(changes.joined(separator: ", "))."
     }
 
     /// `segments` in a box `width` by `height` points, `inset` in from each edge, `y` up.
