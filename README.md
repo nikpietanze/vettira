@@ -12,9 +12,9 @@
 Vettira is free, open source and local-first. It watches your stock and ETF watchlist from the
 menu bar and notifies you when a price falls from its session high by a threshold you set.
 
-> **Status: in progress.** The logic (quotes, market sessions, session highs, alerts and
-> settings), the menu bar, notifications, the dashboard with watchlist editing, and Settings are
-> built. [Install a release](#install), or [build it](#build-and-run) with Xcode.
+> **Status: 0.1.0, the first release.** It has the menu bar, notifications, the dashboard with
+> watchlist editing, each symbol's chart, and Settings. [Install it](#install), or
+> [build it](#build-and-run) with Xcode.
 
 <p align="center">
   <img src="docs/assets/menu-bar.png" alt="Vettira's menu-bar item as it takes turns through three symbols, one under another: QQQ 342.66 with its last two digits green as it rose; SPY 351.47 and DIA 305.54 with the digits from the first one that changed red as they fell" width="98">
@@ -25,15 +25,19 @@ menu bar and notifies you when a price falls from its session high by a threshol
 </p>
 
 <p align="center">
-  <img src="docs/assets/dashboard.png" alt="Vettira's dashboard window: fields to add and search symbols above the watchlist as a table, each row with a checkbox to monitor it, a pin, its symbol, a button to show it in the menu bar, its price, high, change from the high, thresholds, quote time and age, the warning this session and buttons to move or remove it, then the connection's health and diagnostics and a Settings button" width="860">
+  <img src="docs/assets/dashboard.png" alt="Vettira's dashboard window: fields to add and search symbols above the watchlist as a table, each row with a checkbox to monitor it, a pin, its symbol, a button to show it in the menu bar, its chart of the day, its price, high, change from the high, thresholds, quote time and age, the warning this session and buttons to move or remove it, then the connection's health and diagnostics and a Settings button" width="860">
 </p>
 
 <p align="center">
   <img src="docs/assets/settings.png" alt="Vettira's Settings window: the update interval, the stale-after time, the default thresholds, the data source with its disclaimer and a link to Yahoo's terms, Test Connection, and how often the menu bar takes turns through the symbols, down to the end of its menu-bar section" width="420">
 </p>
 
-<p align="center"><sub>The menu-bar item as it takes turns through three symbols, its popover, the dashboard and
-Settings, from a demo run: the prices are made up (their source reads "Demo (made-up prices)"),
+<p align="center">
+  <img src="docs/assets/chart.png" alt="SPY's chart window on 1D: the price, 351.47, and its change today, up 1.58 (0.45%) in green; the day's line from the open, green as it's above the open, with the previous close dotted and a crosshair at 13:04 ET showing the price, change and volume; the timeframes from 1D to 5Y; then the open, high, low, previous close, volume, observed high, change from the high and thresholds" width="520">
+</p>
+
+<p align="center"><sub>The menu-bar item as it takes turns through three symbols, its popover, the dashboard,
+Settings and a symbol's chart, from a demo run: the prices are made up (their source reads "Demo (made-up prices)"),
 not Yahoo Finance's, and the times are New York's, the exchange's (EST).</sub></p>
 
 ## What it's for, and what it isn't
@@ -104,7 +108,7 @@ came back or what went wrong. The requests, the fields Vettira reads and each er
 
 Each release is on the [Releases page](https://github.com/nikpietanze/vettira/releases) as
 `Vettira-<version>.zip`, with its SHA-256 in `Vettira-<version>.zip.sha256`. It needs **macOS 14
-(Sonoma) or later**. If there's no release yet, [build it](#build-and-run) instead.
+(Sonoma) or later**. To build it yourself instead, see [Build and run](#build-and-run).
 
 1. Download both files, and check the zip in the folder you saved them to:
    `shasum -a 256 -c Vettira-<version>.zip.sha256` should say `OK`.
@@ -189,8 +193,8 @@ instead of your own. With either, alerts go only to the app's log, not to Notifi
 unless you add `--notify`. In Xcode, add the same arguments under Product, Scheme, Edit Scheme…,
 Run, Arguments. `--snapshot <folder>` makes a demo run that, once the warnings have come (or
 after `--snapshot-after <seconds>`), saves pictures of the menu-bar item, the popover, the
-dashboard and Settings, in light and dark, to that folder, offscreen, and quits. A Release build
-ignores them. More: [the demo provider](docs/providers.md#the-demo-provider).
+dashboard, Settings and the menu-bar symbol's chart on 1D, 1Y and 5D, in light and dark, to that
+folder, offscreen, and quits. A Release build ignores them. More: [the demo provider](docs/providers.md#the-demo-provider).
 
 ### Run the tests
 
